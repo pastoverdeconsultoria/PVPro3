@@ -1,0 +1,22 @@
+const {JSDOM,VirtualConsole}=require('jsdom');const fs=require('fs');
+const html=fs.readFileSync('app.html','utf8').replace(/<script src=[^>]+><\/script>/,'');
+const errs=[];const vc=new VirtualConsole();vc.on('jsdomError',e=>errs.push(e.message));
+const dom=new JSDOM(html,{beforeParse(w){w.scrollTo=()=>{};},runScripts:'dangerously',url:'https://x.test/',virtualConsole:vc,pretendToBeVisual:true});
+const w=dom.window,doc=w.document;w.addEventListener('error',e=>errs.push('win:'+e.message));
+const $=s=>doc.querySelector(s),$$=s=>[...doc.querySelectorAll(s)];
+const click=el=>{if(!el)throw new Error('no el');el.dispatchEvent(new w.MouseEvent('click',{bubbles:true}));};
+const T=s=>s.replace(/\s+/g,' ').trim();const txt=s=>T(($(s)||{textContent:''}).textContent);
+const go=h=>{w.location.hash=h;w.dispatchEvent(new w.HashChangeEvent('hashchange'));};
+const submit=f=>f.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
+const setv=(sel,v)=>{const e=$(sel);if(!e)throw new Error('no '+sel);e.value=v;};
+function step(n,fn){try{fn();console.log('OK',n);}catch(e){console.log('FAIL',n,e.stack.split('\n').slice(0,3).join(' | '));}}
+const F=()=>w.eval('F()');const L=id=>F().lots.find(l=>l.id===id);const iso=d=>w.eval(`iso(${d})`);
+step('painel',()=>{console.log(' hero',txt('.hero'));console.log(' mods',$$('.modc').map(b=>T(b.textContent).slice(0,80)).join(' | '));});
+step('card occ l2',()=>{go('mapa');const e=F().events.find(x=>x.lot==='l2'&&x.end==null);click($(`polygon.pad[data-id="${e.pad}"]`));console.log(' ',txt('.sheet').slice(0,220));click($('.sheet [data-act=close]'));});
+step('card rest',()=>{const e=F().events.filter(x=>x.lot==='l2'&&x.end!=null).sort((a,b)=>b.end-a.end)[0];click($(`polygon.pad[data-id="${e.pad}"]`));console.log(' ',txt('.sheet').slice(0,400));click($('.sheet [data-act=close]'));});
+step('analise',()=>{go('analise');console.log(' ',txt('.hero'));console.log(' ',T($('section[aria-label="Lotação por mês"] svg').getAttribute('aria-label')).slice(0,300));console.log(' row1',T($('tbody tr').textContent));});
+step('rebanho supl',()=>{go('rebanho');console.log(' ',$$('article.card').map(a=>T(a.textContent).slice(0,190)).join('\n   '));});
+step('set supl past',()=>{click($('[data-act=supl][data-lot=l3]'));const i=$('#sp-p');i.value='0.4';i.dispatchEvent(new w.Event('input',{bubbles:true}));console.log(' prev',txt('#sp-prev'));setv('#sp-d',iso(-30));submit($('form[data-act=doSupl]'));console.log(' toast',txt('#toast'),'err',txt('.err'),'l3 supl',L('l3').supl);});
+step('dup supl',()=>{click($('[data-act=supl][data-lot=l3]'));setv('#sp-p','0.4');setv('#sp-d',iso(-30));submit($('form[data-act=doSupl]'));console.log(' err',txt('.err'));setv('#sp-p','3');submit($('form[data-act=doSupl]'));console.log(' err',txt('.err'));setv('#sp-p','0');setv('#sp-d',iso(0));submit($('form[data-act=doSupl]'));console.log(' toast',txt('#toast'),'l3',L('l3').supl);});
+step('history',()=>{click($('[data-act=lot][data-id=l3]'));console.log(' ',$$('.sheet .list li').slice(0,5).map(l=>T(l.textContent)).join(' | '));const b=$$('.sheet [data-act=delLog]').find(x=>x.closest('li').textContent.includes('Suplemento encerrado'));click(b);click($$('.sheet [data-act=delLog]').find(x=>x.textContent.includes('Excluir')));console.log(' toast',txt('#toast'),'l3',L('l3').supl);});
+console.log('ERRORS',errs);

@@ -1,0 +1,9 @@
+node_modules
+dist
+dev-dist
+.env
+.env.*
+!.env.example
+.vercel
+*.local
+reference/simulador/node_modules

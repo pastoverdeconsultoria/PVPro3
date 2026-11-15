@@ -1,0 +1,23 @@
+const {JSDOM,VirtualConsole}=require('jsdom');const fs=require('fs');
+const html=fs.readFileSync('app.html','utf8').replace(/<script src=[^>]+><\/script>/,'');
+const errs=[];const vc=new VirtualConsole();vc.on('jsdomError',e=>errs.push(e.message));
+const dom=new JSDOM(html,{beforeParse(w){w.scrollTo=()=>{};},runScripts:'dangerously',url:'https://x.test/',virtualConsole:vc,pretendToBeVisual:true});
+const w=dom.window,doc=w.document;w.addEventListener('error',e=>errs.push('win:'+e.message));
+const $=s=>doc.querySelector(s),$$=s=>[...doc.querySelectorAll(s)];
+const click=el=>{if(!el)throw new Error('no el');el.dispatchEvent(new w.MouseEvent('click',{bubbles:true}));};
+const T=s=>s.replace(/\s+/g,' ').trim();const txt=s=>T(($(s)||{textContent:''}).textContent);
+const go=h=>{w.location.hash=h;w.dispatchEvent(new w.HashChangeEvent('hashchange'));};
+const submit=f=>f.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
+const change=(el,v)=>{if(!el)throw new Error('no el chg');if(v!==undefined)el.value=v;el.dispatchEvent(new w.Event('change',{bubbles:true}));};
+function step(n,fn){try{fn();console.log('OK',n);}catch(e){console.log('FAIL',n,e.stack.split('\n').slice(0,3).join(' | '));}}
+step('model',()=>{const m=w.eval('projModel(F())');console.log(' clim normal:',Object.values(m.cl[1]).filter(c=>c.k>=-11).map(c=>`${c.k}:${['J','F','M','A','M','J','J','A','S','O','N','D'][c.m]} r${Math.round(c.rain)} T${c.T.toFixed(1)} q${c.ratio.toFixed(2)} FH${c.FH.toFixed(2)}`).join(' | '));
+ m.us.forEach(u=>console.log(' unit',u.name,'area',u.area.toFixed(0),'Mref',u.Mref,'Mcal',u.Mcal&&u.Mcal.toFixed(1),'w',u.w,'err',u.err&&u.err.toFixed(2),'cur',u.cur.toFixed(2),'\n   obs',Object.keys(u.obs).sort((a,b)=>a-b).map(k=>u.obs[k].toFixed(2)).join(' '),'\n   cap',[...Array(24)].map((_,i)=>u.cap[1][i-11].toFixed(2)).join(' ')));});
+step('painel alert',()=>{console.log(' ',$$('.alert').map(a=>T(a.textContent).slice(0,120)).join(' || '));});
+step('view',()=>{go('analise');click($('[data-act=anView][data-v=proj]'));console.log(' hero',txt('.hero'));console.log(' tiles',$$('.tile').map(t=>T(t.textContent)).join(' | '));console.log(' alert',txt('.alert').slice(0,200));console.log(' rows',$$('tbody tr').length);console.log(' N',txt('.stat3'));});
+step('scope',()=>{click($$('[data-act=pscope]')[2]);console.log(' hero',txt('.hero'));console.log(' Nrows',$$('section[aria-label="Dose de nitrogênio"] tbody tr').map(r=>T(r.textContent)).join(' | '));});
+step('meta',()=>{change($('#pj-meta'),'2.5');console.log(' N',txt('.stat3'));console.log(' Nrows',$$('section[aria-label="Dose de nitrogênio"] tbody tr').map(r=>T(r.textContent)).slice(0,6).join(' | '));});
+step('params',()=>{change($('#pj-ef'),'60');console.log(' hero',txt('.hero').slice(0,70));click($('[data-act=pM][data-v=ref]'));console.log(' ref hero',txt('.hero').slice(0,70));const sel=$$('select[data-chg=ucond]')[0];change(sel,'adu');console.log(' cond',w.eval('F().modules[0].cond'));change($$('input[data-chg=uM]')[0],'60');console.log(' M',w.eval('F().modules[0].M'));});
+step('fert',()=>{click($('[data-act=fert]'));const f=$('form[data-act=doFert]');submit(f);console.log(' err',txt('.err'));$('#ft-n').value='60';submit($('form[data-act=doFert]'));console.log(' toast',txt('#toast'),'n',w.eval('F().fert.length'));const b=$('[data-act=delFert]');click(b);click($('[data-act=delFert]'));console.log(' after del',w.eval('F().fert.length'),txt('#toast'));});
+step('pad card fert',()=>{go('mapa');click($$('polygon.pad')[0]);console.log(' btn',!!$('.sheet [data-act=fert]'));click($('.sheet [data-act=fert]'));console.log(' modal',txt('.modal h2'));click($('[data-act=close]'));});
+step('new farm proj',()=>{click($('[data-act=farms]'));click($('[data-act=wizStart]'));const n=$('#w-name');n.value='Faz T';n.dispatchEvent(new w.Event('input',{bubbles:true}));click($('[data-act=wizNext]'));click($('[data-act=kmlex]'));click($('[data-act=wizNext]'));click($('[data-act=wizNext]'));click($('[data-act=wizNext]'));const lf=$('form[data-act=wlot]');lf.querySelector('[name=heads]').value='200';submit(lf);click($('[data-act=wizNext]'));const sel=$('.wiz select[data-chg=wsitpad]');change(sel,sel.options[2].value);click($('[data-act=wizNext]'));go('analise');console.log(' ',txt('.hero').slice(0,120));console.log(' ',$$('.tile').map(t=>T(t.textContent)).join(' | '));});
+console.log('ERRORS',errs);

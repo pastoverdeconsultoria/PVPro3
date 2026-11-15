@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    @apply bg-bg text-text font-sans;
+    font-variant-numeric: tabular-nums;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+  }
+
+  :focus-visible {
+    outline: 2px solid #c6f24e;
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .card {
+    @apply min-w-0 rounded-card border border-line bg-card p-5;
+  }
+
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-lime;
+  }
+
+  .k {
+    @apply text-[13px] text-muted;
+  }
+
+  .h2 {
+    @apply m-0 font-display text-[19px] font-semibold tracking-[-0.01em] desk:text-[21px];
+  }
+
+  .big {
+    @apply font-display font-bold leading-none tracking-[-0.02em];
+  }
+
+  /* Alvo de toque mínimo de 44 px em todo botão. */
+  .btn {
+    @apply inline-flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-full border border-line2 bg-transparent px-[18px] text-sm font-semibold text-text no-underline hover:border-muted disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .btn-pri {
+    @apply border-lime bg-lime text-ink hover:border-lime;
+  }
+}

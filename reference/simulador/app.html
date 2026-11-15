@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulador — app de gestão de pastagem</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{--bg:#0B120E;--card:#121C16;--line:#223028;--line2:#35483C;--text:#EEF3EC;--muted:#9DB0A3;--lime:#C6F24E;--ink:#0B120E;--r1:#1E3A2B;--r2:#2F6B4A;--r3:#5DB383;--warn:#FF8A3D;--unk:#3A433E}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif;font-variant-numeric:tabular-nums}
+button,input,select{font:inherit;color:inherit}
+a{color:var(--lime)}
+.wrap{max-width:1320px;margin:0 auto;padding:20px 24px 120px}
+header.top{position:sticky;top:0;z-index:20;background:rgba(11,18,14,.94);border-bottom:1px solid var(--line)}
+.topin{max-width:1320px;margin:0 auto;padding:10px 24px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+.farmbtn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:none;border:0;padding:4px 0;cursor:pointer;min-height:44px;text-align:left}
+.eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--lime);font-weight:600}
+.fname{font-family:'Space Grotesk',Inter,sans-serif;font-size:22px;font-weight:700;letter-spacing:-.01em;display:flex;align-items:center;gap:6px}
+.tabs{display:flex;gap:4px;padding:4px;border-radius:999px;background:var(--card);border:1px solid var(--line)}
+.tabs a{display:flex;align-items:center;gap:8px;min-height:40px;padding:0 16px;border-radius:999px;color:var(--text);text-decoration:none;font-size:14px;font-weight:500}
+.tabs a[aria-current=page]{background:var(--lime);color:var(--ink);font-weight:600}
+.sim{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.sim b{color:var(--text);font-weight:600}
+@media (max-width:900px){
+ .tabs{position:fixed;left:8px;right:8px;bottom:8px;z-index:30;justify-content:space-between;border-radius:20px;padding:6px;box-shadow:0 8px 30px rgba(0,0,0,.6)}
+ .tabs a{flex:1 1 0;flex-direction:column;gap:3px;padding:6px 2px;border-radius:14px;font-size:11px;min-height:54px;justify-content:center}
+ .topin{padding:8px 14px}
+ .wrap{padding:14px 12px 120px}
+ .fname{font-size:19px}
+}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border-radius:999px;border:1px solid var(--line2);background:transparent;color:var(--text);font-weight:600;font-size:14px;cursor:pointer;text-decoration:none}
+.btn:hover{border-color:var(--muted)}
+.btn.pri{background:var(--lime);border-color:var(--lime);color:var(--ink)}
+.btn.sm{min-height:38px;padding:0 13px;font-size:13px}
+.btn.warn{border-color:var(--warn);color:var(--warn)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.iconbtn{width:44px;height:44px;flex:none;border-radius:12px;border:0;background:transparent;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;color:var(--muted)}
+.iconbtn:hover{color:var(--text);background:var(--line)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:20px;min-width:0}
+.hero{background:var(--lime);color:var(--ink);border-radius:20px;padding:24px;min-width:0}
+.row{display:flex;flex-wrap:wrap;gap:16px}
+.col{display:flex;flex-direction:column;gap:14px}
+.k{font-size:13px;color:var(--muted)}
+.h2{margin:0;font-family:'Space Grotesk',Inter,sans-serif;font-size:21px;font-weight:600;letter-spacing:-.01em}
+.big{font-family:'Space Grotesk',Inter,sans-serif;font-weight:700;letter-spacing:-.02em;line-height:1}
+.view{display:flex;flex-direction:column;gap:20px}
+.head{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px}
+.legend span{display:flex;align-items:center;gap:6px}
+.sw{width:14px;height:14px;border-radius:4px;display:inline-block;flex:none}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{min-height:40px;padding:0 14px;border-radius:999px;border:1px solid var(--line2);background:transparent;color:var(--text);font-size:13px;font-weight:500;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--text);color:var(--ink);border-color:var(--text);font-weight:600}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field label,.lbl{font-size:13px;color:var(--muted)}
+.in{min-height:46px;padding:0 14px;border-radius:12px;border:1px solid var(--line2);background:var(--bg);color:var(--text);font-size:15px;width:100%}
+select.in{padding:0 10px}
+.in:focus,.chip:focus-visible,.btn:focus-visible,.tabs a:focus-visible,.iconbtn:focus-visible,.modc:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
+.map{width:100%;height:auto;display:block;touch-action:manipulation}
+.map .pad{cursor:pointer;stroke:#121C16;stroke-width:3;stroke-linejoin:round;vector-effect:non-scaling-stroke;outline:none}
+.map .pad:focus-visible{stroke:#FFFFFF;stroke-width:4}
+.map text,.map .deco{pointer-events:none}
+.modc{display:flex;flex-direction:column;gap:10px;text-align:left;cursor:pointer;color:var(--text);font:inherit;flex:1 1 260px}
+.modc[aria-pressed=true]{border-color:var(--lime);box-shadow:inset 0 0 0 1px var(--lime)}
+.alert{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:12px 16px;border-radius:14px;background:#1F1610;border:1px solid #5A3418;font-size:14px}
+.alert.info{background:#131D18;border-color:var(--line2)}
+.alert b{color:var(--warn)}
+.alert.info b{color:var(--lime)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{font-weight:500;color:var(--muted);font-size:12px;text-align:left;padding:0 10px 10px 0;white-space:nowrap}
+td{padding:11px 10px 11px 0;border-top:1px solid var(--line)}
+.num{text-align:right}
+.scrollx{overflow-x:auto}
+dl.kv{margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 12px}
+dl.kv dt{font-size:12px;color:var(--muted)}
+dl.kv dd{margin:4px 0 0;font-size:15px;font-weight:600}
+.sheet>*,.modal>*,.modal form>*{flex-shrink:0}
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:40}
+.sheet{position:fixed;z-index:41;background:var(--card);border:1px solid var(--line2);display:flex;flex-direction:column;gap:16px;padding:22px;overflow:auto}
+@media (min-width:901px){.sheet{top:16px;right:16px;bottom:16px;width:410px;border-radius:24px}}
+@media (max-width:900px){.sheet{left:0;right:0;bottom:0;max-height:88vh;border-radius:24px 24px 0 0;padding-bottom:28px}}
+.modal{position:fixed;z-index:41;left:50%;top:50%;transform:translate(-50%,-50%);width:min(520px,calc(100vw - 20px));max-height:calc(100vh - 20px);overflow:auto;background:var(--card);border:1px solid var(--line2);border-radius:24px;padding:24px;display:flex;flex-direction:column;gap:16px}
+.wiz{position:fixed;inset:0;z-index:50;background:var(--bg);overflow:auto}
+.wizin{max-width:1100px;margin:0 auto;padding:20px 16px 40px;display:flex;flex-direction:column;gap:20px}
+.toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:60;background:var(--text);color:var(--ink);padding:12px 18px;border-radius:999px;font-weight:600;font-size:14px;box-shadow:0 8px 30px rgba(0,0,0,.5);max-width:calc(100vw - 32px);text-align:center}
+[hidden]{display:none!important}
+.bar{height:8px;border-radius:4px;background:var(--line)}
+.bar>i{display:block;height:8px;border-radius:4px;background:var(--lime)}
+.steps{display:flex;gap:6px}
+.steps i{flex:1 1 0;height:6px;border-radius:3px;background:var(--line)}
+.steps i.on{background:var(--lime)}
+.err{color:var(--warn);font-size:14px;margin:0}
+.muted{color:var(--muted)}
+.list{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.li{display:flex;align-items:center;gap:10px;padding:6px 6px 6px 14px;border-radius:12px;background:var(--bg);min-height:52px}
+.li .grow{flex-grow:1;min-width:0}
+.chk{display:flex;align-items:center;gap:10px;min-height:44px;cursor:pointer;font-size:14px}
+.chk input{width:20px;height:20px;accent-color:#C6F24E}
+.stat3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;background:var(--bg);border-radius:14px;padding:16px}
+.pill{padding:6px 12px;border-radius:999px;font-size:13px;font-weight:600;white-space:nowrap}
+.seg{display:flex;gap:6px}
+.seg i{flex:1 1 0;height:8px;border-radius:4px;background:var(--line)}
+.seg i.on{background:var(--lime)}
+.seg i.late{background:var(--warn)}
+@media (max-width:900px){
+ .simlab{display:none}
+ .tile{flex:1 1 100px!important;padding:14px}
+ .tile .big{font-size:26px!important}
+ .tile .k{font-size:12px}
+ .o-hero{order:0}.o-map{order:1}.o-alert{order:2}.o-mod{order:3}
+ .o-map{padding:14px}
+ .hero .big{font-size:52px!important}
+ .h2{font-size:19px}
+}
+</style>
+</head>
+<body>
+<header class="top"><div class="topin" id="top"></div></header>
+<main class="wrap" id="main"></main>
+<div id="ov"></div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<script>
+'use strict';
+/* ---------- utilidades ---------- */
+const MES=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+const SEM=['dom','seg','ter','qua','qui','sex','sáb'];
+const BASE=Date.UTC(2026,10,13);
+const dt=d=>new Date(BASE+d*864e5);
+const fD=d=>{const x=dt(d);return x.getUTCDate()+' '+MES[x.getUTCMonth()];};
+const fDW=d=>SEM[dt(d).getUTCDay()]+', '+fD(d);
+const fDY=d=>fD(d)+' '+dt(d).getUTCFullYear();
+const iso=d=>dt(d).toISOString().slice(0,10);
+const fromIso=s=>{const t=Date.parse(String(s)+'T00:00:00Z');return isNaN(t)?NaN:Math.round((t-BASE)/864e5);};
+const dayUTC=(y,m,d)=>Math.round((Date.UTC(y,m,d)-BASE)/864e5);
+const monthOf=d=>dt(d).getUTCMonth();
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const nf=(x,d=2)=>Number(x).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});
+const sum=a=>a.reduce((s,x)=>s+x,0);
+const r1=x=>Math.round(x*10)/10;
+const pl=(n,a,b)=>n===1?a:b;
+const uid=p=>p+Math.random().toString(36).slice(2,9);
+function rnd(seed,a,b){let x=Math.imul(seed^0x9e3779b9,0x85ebca6b)^Math.imul(a+0x632be5ab,0xc2b2ae35)^Math.imul(b+0x27d4eb2f,0x165667b1);x^=x>>>15;x=Math.imul(x,0x2c1b3c6d);x^=x>>>12;x=Math.imul(x,0x297a2d39);x^=x>>>15;return (x>>>0)/4294967296;}
+function polyArea(p){let a=0;for(let i=0;i<p.length;i++){const[x1,y1]=p[i],[x2,y2]=p[(i+1)%p.length];a+=x1*y2-x2*y1;}return Math.abs(a)/2;}
+function polyCent(p){let a=0,cx=0,cy=0;for(let i=0;i<p.length;i++){const[x1,y1]=p[i],[x2,y2]=p[(i+1)%p.length];const c=x1*y2-x2*y1;a+=c;cx+=(x1+x2)*c;cy+=(y1+y2)*c;}if(Math.abs(a)<1e-9)return[sum(p.map(q=>q[0]))/p.length,sum(p.map(q=>q[1]))/p.length];a/=2;return[cx/(6*a),cy/(6*a)];}
+const bbW=p=>Math.max(...p.map(q=>q[0]))-Math.min(...p.map(q=>q[0]));
+const IC={
+ home:'<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
+ map:'<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/>',
+ grid:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+ herd:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>',
+ rain:'<path d="M7 15a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 8a4 4 0 0 1 0 7"/><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3"/>',
+ chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+ x:'<path d="M6 6l12 12M18 6 6 18"/>',up:'<path d="M6 15l6-6 6 6"/>',down:'<path d="M6 9l6 6 6-6"/>',
+ plus:'<path d="M12 5v14M5 12h14"/>',trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+ move:'<path d="M5 12h14M13 6l6 6-6 6"/>',file:'<path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4"/>'
+};
+const ic=(k,s=18)=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k]}</svg>`;
+
+/* ---------- parâmetros ---------- */
+const N_RAIN=[130,110,120,80,45,25,20,18,30,70,140,160];
+const TMAX=[31,32,31,30,28,27,26,27,29,30,30,31];
+const TMIN=[20,20,20,19,17,15,14,14,16,18,19,20];
+const SEASON=[1.05,1.08,1.08,1.05,0.95,0.85,0.75,0.70,0.72,0.82,1.0,1.02];
+const CATS=[['Bezerros',180],['Recria',280],['Novilhas',330],['Engorda',440],['Vacas',450],['Touros',650]];
+const catW=c=>(CATS.find(x=>x[0]===c)||[0,400])[1];
+const SPECIES=['Marandu','Mombaça','Tanzânia','Decumbens','Humidícola','Piatã','Tamani','Zuri','Outro'];
+const MOD_COLORS=['#4E79B8','#B87A3E','#8E6CC9','#3FA6A6','#C55A7A','#7F8F3A','#6B7FD6','#B05E3B'];
+const NONG=/reserva|app\b|sede|aguada|represa|mata|lago|curral|estrada|benfeitoria/i;
+const EX=[[[60,60],[230,30],[220,170],[40,190]],[[230,30],[420,50],[410,200],[220,170]],[[420,50],[600,25],[610,175],[410,200]],[[600,25],[760,70],[775,210],[610,175]],
+[[40,190],[220,170],[240,330],[55,340]],[[220,170],[410,200],[400,350],[240,330]],[[410,200],[610,175],[590,335],[400,350]],[[610,175],[775,210],[750,360],[590,335]],
+[[55,340],[240,330],[250,495],[90,480]],[[240,330],[400,350],[430,470],[250,495]],[[400,350],[590,335],[600,500],[430,470]],[[590,335],[750,360],[720,470],[600,500]]];
+const EX_WATER=[[220,170],[410,200],[610,175],[240,330],[400,350],[590,335]];
+
+/* ---------- modelo ---------- */
+const uaLot=l=>l.heads*l.weight/450;
+const pad=(f,id)=>f.paddocks.find(p=>p.id===id);
+const lotOf=(f,id)=>f.lots.find(l=>l.id===id);
+const modOfPad=(f,pid)=>f.modules.find(m=>m.order.includes(pid));
+const gPads=f=>f.paddocks.filter(p=>p.grazing);
+const gArea=f=>sum(gPads(f).map(p=>p.area));
+const openOfLot=(f,lid)=>f.events.find(e=>e.lot===lid&&e.end==null);
+
+function rainEst(f,d){const m=monthOf(d),N=N_RAIN[m]*f.rainMul,n=Math.max(2,Math.round(N/10));if(rnd(f.seed,d,1)<n/30)return r1(-Math.log(1-rnd(f.seed,d,2)*0.97)*N/n);return 0;}
+function temps(f,d){const m=monthOf(d),w=rainEst(f,d)>2?-2:0;return[r1(TMIN[m]+rnd(f.seed,d,3)*2-1),r1(TMAX[m]+w+rnd(f.seed,d,4)*2.4-1.2)];}
+const realR=(f,d)=>{const r=f.rainReal[d];return r==null?null:r;};
+const rainVal=(f,d)=>{const r=realR(f,d);return r==null?rainEst(f,d):r;};
+
+function exampleFarm(){
+ const sp=['Marandu','Marandu','Marandu','Marandu','Mombaça','Mombaça','Mombaça','Mombaça','Decumbens','Decumbens','Marandu','Marandu'];
+ const pf=[1.0,1.15,0.85,0.8,1.15,1.25,0.85,1.0,1.0,0.75,1.05,1.1];
+ const f={id:'ex',name:'Fazenda Exemplo',city:'Itapetinga, BA',seed:20261113,rainMul:1,centroid:{lat:-15.2541,lon:-40.2478},created:-400,seq:0,
+  paddocks:EX.map((pts,i)=>({id:'p'+(i+1),name:'P'+String(i+1).padStart(2,'0'),pts,area:r1(polyArea(pts)*16/1e4),species:sp[i],grazing:true,lastExit:null})),
+  waters:EX_WATER.map(w=>w.slice()),
+  lots:[{id:'l1',name:'Lote 1',cat:'Recria'},{id:'l2',name:'Lote 2',cat:'Engorda'},{id:'l3',name:'Lote 3',cat:'Vacas'}],
+  modules:[{id:'mA',name:'Módulo A',color:MOD_COLORS[0],order:['p3','p4','p1','p2'],lotId:'l1',occ:5},{id:'mB',name:'Módulo B',color:MOD_COLORS[1],order:['p7','p8','p5','p6'],lotId:'l2',occ:4},{id:'mC',name:'Módulo C',color:MOD_COLORS[2],order:['p10','p11','p12','p9'],lotId:'l3',occ:6}],
+  stays:[],events:[],rainReal:{}};
+ const H={l1:420,l2:380,l3:352},WG={l1:[232,0.62,0.22],l2:[398,0.78,0.32],l3:[446,0.12,-0.06]};
+ for(const l of f.lots){const[w0,gw,gd]=WG[l.id];let cur=Math.round(H[l.id]*SEASON[monthOf(-400)]);
+  l.log=[{id:'g'+l.id+'i',seq:++f.seq,day:-400,type:'inicio',heads:cur,weight:w0,cat:l.cat,note:'Lote formado'}];
+  const ws=[-210];for(let d=-177;d<=-9;d+=30+Math.round(rnd(f.seed,d,9)*8))ws.push(d);
+  let w=w0,prev=-210;const wk={};ws.forEach((d,k)=>{if(k){for(let x=prev;x<d;x++){const m=monthOf(x);w+=(m>=9||m<=3)?gw:gd;}prev=d;}wk[d]=k?r1(w+(rnd(f.seed,d,10)-0.5)*4):w0;});
+  for(let d=-399;d<=0;d++){
+   if(dt(d).getUTCDate()===1){const tgt=Math.round(H[l.id]*SEASON[monthOf(d)]),df=tgt-cur;if(df>0)l.log.push({id:uid('g'),seq:++f.seq,day:d,type:'entrada',n:df,reason:'Compra'});if(df<0)l.log.push({id:uid('g'),seq:++f.seq,day:d,type:'saida',n:-df,reason:'Venda'});cur=tgt;}
+   if(wk[d]!=null)l.log.push({id:uid('g'),seq:++f.seq,day:d,type:'peso',kg:wk[d],n:cur-Math.round(rnd(f.seed,d,11)*3)});
+  }}
+ const addSp=(lid,day,pct)=>lotOf(f,lid).log.push({id:uid('g'),seq:++f.seq,day,type:'supl',pct});
+ addSp('l3',-400,0.08);
+ addSp('l1',dayUTC(2026,4,1),0.2);addSp('l1',dayUTC(2026,10,1),0);
+ addSp('l2',dayUTC(2026,4,1),0.5);addSp('l2',dayUTC(2026,7,1),1.0);
+ f.modules.forEach(m=>m.history=[{from:-400,order:m.order.slice()}]);
+ for(const m of f.modules){let t=-400,i=0;
+  for(;;){const pid=m.order[i],d=Math.max(1,Math.round(m.occ*pf[+pid.slice(1)-1]));
+   if(t+d>0){f.stays.push({id:uid('s'),lot:m.lotId,pad:pid,start:t,end:null});break;}
+   f.stays.push({id:uid('s'),lot:m.lotId,pad:pid,start:t,end:t+d});t+=d;i=(i+1)%m.order.length;}}
+ lotOf(f,'l3').log.push({id:'gl3m',seq:++f.seq,day:-3,type:'saida',n:2,reason:'Morte'});
+ for(let d=-120;d<0;d++){if(rnd(f.seed,d,7)<0.86){const e=rainEst(f,d);f.rainReal[d]=e===0?0:r1(e*(0.6+0.8*rnd(f.seed,d,8)));}}
+ f.proj={efic:0.5,cad:75,rn:26};f.modules[1].cond='adu';f.fert=[];
+ [[2025,11,5],[2026,0,20],[2026,2,10],[2026,10,3]].forEach(q=>['p5','p6','p7','p8'].forEach(pid=>f.fert.push({id:uid('a'),pad:pid,day:dayUTC(q[0],q[1],q[2]),n:40})));
+ derive(f);
+ return f;
+}
+
+/* ---------- recálculo a partir dos registros ---------- */
+const INTAKE=2.5,LIMIAR=0.3;
+const cutF=sp=>Math.max(0,Math.min(sp||0,INTAKE)-LIMIAR)/INTAKE;
+const pastoF=sp=>1-cutF(sp);
+const uap=e=>e.uap!=null?e.uap:e.ua;
+function stateAt(tl,d){let s=null;for(const x of tl){if(x.day<=d)s=x;else break;}return s;}
+function derive(f){
+ f.seq=f.seq||0;f.stays=f.stays||[];
+ for(const l of f.lots){
+  const L=(l.log||[]).slice().sort((a,b)=>a.day-b.day||a.seq-b.seq);
+  let h=0,w=0,c=l.cat,neg=null,sp=0,spd=null;const tl=[],ws=[];
+  for(const x of L){
+   if(x.type==='inicio'){h=x.heads;w=x.weight;c=x.cat||c;}
+   else if(x.type==='entrada'||x.type==='transf_in'){const kg=x.kg||w;w=h+x.n>0?(h*w+x.n*kg)/(h+x.n):kg;h+=x.n;}
+   else if(x.type==='saida'||x.type==='transf_out')h-=x.n;
+   else if(x.type==='peso'){w=x.kg;ws.push({id:x.id,day:x.day,kg:x.kg,n:x.n});}
+   else if(x.type==='cat')c=x.to;
+   else if(x.type==='supl'){sp=x.pct;spd=x.day;}
+   if(h<0&&neg==null)neg=x.day;
+   const last=tl[tl.length-1];if(last&&last.day===x.day){last.h=h;last.w=w;last.sp=sp;}else tl.push({day:x.day,h,w,sp});
+  }
+  l.heads=Math.max(0,h);l.weight=r1(w);l.cat=c;l.weighs=ws;l._tl=tl;l._neg=neg;l.supl=sp;l.suplSince=spd;
+ }
+ const ev=[];
+ for(const s of f.stays){const l=lotOf(f,s.lot);if(!l)continue;const tl=l._tl;
+  const pts=[s.start,...tl.map(x=>x.day).filter(d=>d>s.start&&(s.end==null||d<s.end))];
+  pts.forEach((a,i)=>{const b=i<pts.length-1?pts[i+1]:s.end;const st=stateAt(tl,a);const ua=st&&st.h>0?r1(st.h*st.w/450):0,sp=st?st.sp||0:0;if(ua>0)ev.push({id:s.id+'_'+i,lot:s.lot,pad:s.pad,start:a,end:b,ua,uap:r1(ua*pastoF(sp)),sp});});
+ }
+ f.events=ev;
+}
+function closeZero(f){
+ for(const l of f.lots){if(l.heads>0)continue;const s=f.stays.find(x=>x.lot===l.id&&x.end==null);if(!s)continue;
+  let zd=null;for(let i=l._tl.length-1;i>=0;i--){if(l._tl[i].h<=0)zd=l._tl[i].day;else break;}
+  if(zd==null)continue;if(zd<=s.start)f.stays.splice(f.stays.indexOf(s),1);else s.end=zd;}
+}
+function validate(f){
+ for(const l of f.lots){if(l._neg!=null)return `${l.name} ficaria com menos de zero cabeças em ${fDY(l._neg)}.`;
+  const ini=(l.log||[]).find(x=>x.type==='inicio');if(ini&&(l.log||[]).some(x=>x.day<ini.day))return `Há registro de ${l.name} antes da formação do lote (${fD(ini.day)}).`;}
+ return null;
+}
+function mutate(f,fn){
+ const snap=JSON.stringify({lots:f.lots,stays:f.stays,seq:f.seq,modules:f.modules});
+ const restore=()=>{const o=JSON.parse(snap);f.lots=o.lots;f.stays=o.stays;f.seq=o.seq;f.modules=o.modules;derive(f);};
+ let r;try{r=fn();}catch(e){r=e.message||'Erro ao salvar.';}
+ if(typeof r==='string'){restore();return r;}
+ derive(f);closeZero(f);derive(f);
+ const err=validate(f);if(err){restore();return err;}
+ return null;
+}
+const openStay=(f,lid)=>f.stays.find(s=>s.lot===lid&&s.end==null);
+const firstDay=l=>{const i=(l.log||[]).find(x=>x.type==='inicio');return i?i.day:-1e9;};
+
+function lastOcc(f,pid){
+ const cl=f.events.filter(e=>e.pad===pid&&e.end!=null).sort((a,b)=>b.end-a.end);
+ if(!cl.length)return null;
+ let cur=cl[0],start=cur.start,end=cur.end,ud=cur.ua*(cur.end-cur.start),udp=uap(cur)*(cur.end-cur.start);
+ for(;;){const prev=cl.find(e=>e.end===start&&e.lot===cur.lot);if(!prev)break;ud+=prev.ua*(prev.end-prev.start);udp+=uap(prev)*(prev.end-prev.start);start=prev.start;cur=prev;}
+ return{start,end,ud,udp,lot:cl[0].lot};
+}
+function padState(f,p){
+ const T=S.today;
+ const open=f.events.filter(e=>e.pad===p.id&&e.end==null);
+ if(open.length){const ua=sum(open.map(e=>e.ua)),ss=f.stays.filter(x=>x.pad===p.id&&x.end==null),start=ss.length?Math.min(...ss.map(x=>x.start)):Math.min(...open.map(e=>e.start));const up=sum(open.map(uap));return{kind:'occ',ua,up,inst:ua/p.area,instP:up/p.area,day:T-start+1,start,lots:open.map(e=>e.lot)};}
+ const o=lastOcc(f,p.id);
+ if(o){const rest=T-o.end,dias=o.end-o.start;return{kind:'rest',rest,dias,ocorr:o.ud/p.area/dias,ocorrP:o.udp/p.area/dias,glob:o.ud/p.area/(dias+rest),globP:o.udp/p.area/(dias+rest),lot:o.lot,start:o.start,end:o.end,uaAvg:o.ud/dias};}
+ if(p.lastExit!=null)return{kind:'rest',rest:T-p.lastExit,end:p.lastExit,ocorr:null};
+ return{kind:'unk'};
+}
+function modInfo(f,m){
+ const T=S.today,pads=m.order.map(id=>pad(f,id)).filter(Boolean),area=sum(pads.map(p=>p.area));
+ const openE=f.events.filter(e=>e.end==null&&m.order.includes(e.pad));
+ const ua=sum(openE.map(e=>e.ua)),up=sum(openE.map(uap));
+ const r={area,ua,up,lotP:area?up/area:0,lot:area?ua/area:0,cur:null,next:null,inN:null,restAt:null,day:null,lotId:m.lotId};
+ const e=openE.find(x=>x.lot===m.lotId)||openE[0];
+ if(e){const st=openStay(f,e.lot);r.cur=e.pad;r.lotId=e.lot;r.day=T-(st?st.start:e.start)+1;r.inN=m.occ-r.day+1;const i=m.order.indexOf(e.pad);r.next=m.order[(i+1)%m.order.length];
+  const ns=padState(f,pad(f,r.next));r.restAt=ns.kind==='rest'?ns.rest+Math.max(r.inN,0):null;}
+ return r;
+}
+function padYear(f,p,a,b){
+ let ud=0,udp=0,cyc=0;const days=new Set();
+ for(const e of f.events){if(e.pad!==p.id)continue;const end=e.end==null?S.today+1:e.end;const s=Math.max(e.start,a),t=Math.min(end,b);
+  if(t>s){ud+=e.ua*(t-s);udp+=uap(e)*(t-s);for(let d=s;d<t;d++)days.add(d);}
+  if(e.start>=a&&e.start<b&&!f.events.some(x=>x.pad===p.id&&x.end===e.start&&x.lot===e.lot))cyc++;}
+ const n=days.size;return{ud,udp,dias:n,cyc,ocorr:n?ud/p.area/n:0,ocorrP:n?udp/p.area/n:0,glob:ud/p.area/(b-a),globP:udp/p.area/(b-a)};
+}
+function monthRange(k){const d=dt(S.today),y=d.getUTCFullYear(),m=d.getUTCMonth()-k;const a=Math.round((Date.UTC(y,m,1)-BASE)/864e5),b=Math.round((Date.UTC(y,m+1,1)-BASE)/864e5);return{a,b:Math.min(b,S.today+1),full:b-a,m:((m%12)+12)%12};}
+
+/* ---------- estado ---------- */
+const KEY='sim-pastejo-v6';
+let S;
+function fresh(){return{today:0,view:'painel',farms:[exampleFarm()],active:'ex',filter:null,rank:'mod',ov:null,draft:null,wiz:null,anView:'hist',projScope:'farm',projM:'cal',projMeta:null,fertDel:null};}
+function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&Array.isArray(s.farms)&&s.farms.length){s.farms.forEach(derive);return Object.assign(fresh(),{today:s.today||0,farms:s.farms,active:s.active,rank:s.rank||'mod'});}}catch(e){}return fresh();}
+function save(){try{localStorage.setItem(KEY,JSON.stringify({today:S.today,farms:S.farms,active:S.active,rank:S.rank}));}catch(e){}}
+const F=()=>S.farms.find(f=>f.id===S.active)||S.farms[0];
+let toastT;
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,2800);}
+
+/* ---------- mapa ---------- */
+function mapSVG(f,fillFn,o={}){
+ const ps=f.paddocks;if(!ps.length)return'<p class="k">Nenhum polígono.</p>';
+ let x0=1e12,y0=1e12,x1=-1e12,y1=-1e12;
+ ps.forEach(p=>p.pts.forEach(([x,y])=>{x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y);}));
+ const W=x1-x0,H=y1-y0,pd=Math.max(W,H)*0.025,mob=window.innerWidth<700,fs=W/800*(mob?1.55:1);
+ let polys='',labels='',outl='';
+ for(const p of ps){
+  const st=fillFn(p);
+  if(o.mini)polys+=`<polygon points="${p.pts.map(q=>q.join(',')).join(' ')}" fill="${st.fill}" stroke="#121C16" stroke-width="2" vector-effect="non-scaling-stroke"${st.dim?' opacity="0.28"':''}/>`;
+  else polys+=`<polygon class="pad" data-act="pad" data-id="${p.id}" role="button" tabindex="0" aria-label="${esc(st.aria)}" points="${p.pts.map(q=>q.join(',')).join(' ')}" fill="${st.fill}"${st.op!=null?` fill-opacity="${st.op}"`:''}${st.dim?' opacity="0.28"':''}/>`;
+  if(st.ring)outl+=`<polygon class="deco" points="${p.pts.map(q=>q.join(',')).join(' ')}" fill="none" stroke="${st.ring}" stroke-width="4" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
+  const[cx,cy]=polyCent(p.pts),k=Math.max(0.5,Math.min(1,bbW(p.pts)/(W*0.2))),s=fs*k*(o.mini?1.5:1);
+  if(o.mini){labels+=`<text x="${cx}" y="${cy+10*s}" text-anchor="middle" font-family="Space Grotesk, Inter, sans-serif" font-size="${(st.l2&&st.l2.length>4?20:26)*s}" font-weight="700" fill="${st.ink}">${esc(st.l2||'')}</text>`;continue;}
+  labels+=`<g fill="${st.ink}" text-anchor="middle" font-family="Space Grotesk, Inter, sans-serif"${st.dim?' opacity="0.35"':''}>`;
+  if(st.badge!=null)labels+=`<circle cx="${cx}" cy="${cy-46*s}" r="${15*s}" fill="#0B120E"/><text x="${cx}" y="${cy-40*s}" font-size="${16*s}" font-weight="700" fill="#C6F24E">${st.badge}</text>`;
+  labels+=`<text x="${cx}" y="${cy-(st.l2?20:4)*s}" font-size="${(mob?15:13)*s}" font-weight="600">${esc(mob?String(st.l1).split(' · ')[0]:st.l1)}</text>`;
+  if(st.l2)labels+=`<text x="${cx}" y="${cy+12*s}" font-size="${30*s}" font-weight="700">${esc(st.l2)}</text>`;
+  if(st.l3&&!(mob&&st.l2))labels+=`<text x="${cx}" y="${cy+(st.l2?33:16)*s}" font-size="${12*s}">${esc(st.l3)}</text>`;
+  labels+='</g>';
+ }
+ const sc=fs*(o.mini?1.4:1.1);
+ const pins=(f.waters||[]).map(([x,y])=>`<g class="deco" transform="translate(${x} ${y}) scale(${sc})"><path d="M0,0 C-3,-6 -8,-9 -8,-15 A8,8 0 1 1 8,-15 C8,-9 3,-6 0,0 Z" fill="#2F6FED" stroke="#FFFFFF" stroke-width="1.5"/><circle cx="0" cy="-15" r="3" fill="#FFFFFF"/></g>`).join('');
+ return `<svg class="map"${o.mini?' style="pointer-events:none"':''} viewBox="${x0-pd} ${y0-pd} ${W+2*pd} ${H+2*pd}" role="group" aria-label="${esc(o.label||'Mapa dos piquetes')}">${polys}${outl}${pins}${labels}</svg>`;
+}
+const restFill=r=>r<7?'#1E3A2B':r<14?'#2F6B4A':'#5DB383';
+function stateFill(f){return p=>{
+ if(!p.grazing)return{fill:'#18231C',ink:'#7F9286',l1:p.name,l3:'fora do pastejo',aria:p.name+', fora do pastejo'};
+ const s=padState(f,p),m=modOfPad(f,p.id),dim=!!(S.filter&&(!m||m.id!==S.filter));
+ if(s.kind==='occ'){const names=s.lots.map(id=>(lotOf(f,id)||{}).name).join(' + ');const late=m&&s.day>m.occ;
+  return{fill:'#C6F24E',ink:'#0B120E',dim,ring:late?'#FF8A3D':null,l1:p.name+' · '+names,l2:nf(s.inst,2),l3:'UA/ha · dia '+s.day+'/'+(m?m.occ:'–'),aria:`${p.name}, ocupado por ${names}, ${nf(s.inst,2)} UA por hectare, dia ${s.day}`};}
+ if(s.kind==='rest'){const fl=restFill(s.rest);return{fill:fl,ink:fl==='#5DB383'?'#0B120E':'#EEF3EC',dim,l1:p.name,l2:s.rest+' d',l3:s.ocorr!=null?'global '+nf(s.glob,2):'sem histórico',aria:`${p.name}, em descanso há ${s.rest} dias`};}
+ return{fill:'#3A433E',ink:'#EEF3EC',dim,l1:p.name,l2:'?',l3:'descanso ?',aria:p.name+', descanso desconhecido'};
+};}
+
+/* ---------- topo ---------- */
+const TABS=[['painel','Painel','home'],['mapa','Mapa','map'],['rebanho','Rebanho','herd'],['clima','Clima','rain'],['analise','Análise','chart']];
+function renderTop(){
+ const f=F();
+ document.getElementById('top').innerHTML=`<button type="button" class="farmbtn" data-act="farms" aria-haspopup="dialog"><span class="eyebrow">Fazenda · trocar</span><span class="fname">${esc(f.name)} ${ic('down',18)}</span></button>
+ <nav class="tabs" aria-label="Seções">${TABS.map(([id,l,i])=>`<a href="#${id}"${S.view===id||(id==='mapa'&&S.view==='modulos')?' aria-current="page"':''}>${ic(i,18)}<span>${l}</span></a>`).join('')}</nav>
+ <div class="sim"><span><span class="simlab">Simulação · hoje </span><b>${fDW(S.today)} ${dt(S.today).getUTCFullYear()}</b></span><button type="button" class="btn sm" data-act="adv" data-n="1">+1 dia</button><button type="button" class="btn sm" data-act="adv" data-n="7">+7 dias</button></div>`;
+}
+
+/* ---------- PAINEL ---------- */
+function trend30(f){const A=gArea(f),out=[];for(let d=S.today-29;d<=S.today;d++){let u=0;for(const e of f.events){const end=e.end==null?S.today+1:e.end;const p=pad(f,e.pad);if(p&&p.grazing&&e.start<=d&&d<end)u+=e.ua;}out.push(A?u/A:0);}return out;}
+function spark(vals,w,h,color,label){if(vals.length<2)return'';const mn=Math.min(...vals),mx=Math.max(...vals),r=mx-mn||1;const pts=vals.map((v,i)=>`${(i/(vals.length-1)*w).toFixed(1)},${(h-4-(v-mn)/r*(h-8)).toFixed(1)}`).join(' ');return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none" ${label?`role="img" aria-label="${esc(label)}"`:'aria-hidden="true"'}><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.5" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/></svg>`;}
+function rainMTD(f){const T=S.today,d0=dt(T),y=d0.getUTCFullYear(),mo=d0.getUTCMonth(),ma=dayUTC(y,mo,1),dim=dayUTC(y,mo+1,1)-ma;let val=0,cov=0;for(let d=ma;d<=T;d++){val+=rainVal(f,d);if(realR(f,d)!=null)cov++;}return{mo,val,cov,days:T-ma+1,norm:N_RAIN[mo]*f.rainMul*(T-ma+1)/dim,ma};}
+function restReal(f,m){const T=S.today,rs=[];f.events.filter(e=>m.order.includes(e.pad)&&e.start>=T-90&&e.start<=T).forEach(e=>{const prev=f.events.filter(x=>x!==e&&x.pad===e.pad&&x.end!=null&&x.end<=e.start);if(!prev.length)return;const pe=Math.max(...prev.map(x=>x.end));if(pe===e.start)return;rs.push(e.start-pe);});return rs.length?sum(rs)/rs.length:null;}
+function queueRow(f,x){const i=x.i,late=i.inN<=0,lot=lotOf(f,i.lotId)||{name:'—'};
+ const when=late?`Atrasada ${1-i.inN} d`:i.inN===1?'Amanhã':`Em ${i.inN} dias`;
+ return `<li class="li" style="gap:12px;padding:10px 8px 10px 12px;flex-wrap:wrap"><span class="pill" style="min-width:92px;text-align:center;background:${late?'#FF8A3D':i.inN<=1?'#C6F24E':'#223028'};color:${late||i.inN<=1?'#0B120E':'#EEF3EC'}">${when}</span>
+ <span class="grow" style="min-width:150px"><span style="display:block;font-weight:600">${esc(lot.name)}: ${esc(pad(f,i.cur).name)} → ${esc(pad(f,i.next).name)}</span><span class="k">${esc(x.m.name)} · ${i.restAt!=null?`descanso na entrada ${i.restAt} d`:'descanso do destino desconhecido'}</span></span>
+ <button type="button" class="btn sm" data-act="move" data-lot="${i.lotId}">Mover</button></li>`;}
+function vPainel(f){
+ const T=S.today,gp=gPads(f),A=gArea(f),st=gp.map(p=>padState(f,p));
+ const nOcc=st.filter(s=>s.kind==='occ').length,nRest=st.length-nOcc;
+ const uaP=sum(f.events.filter(e=>e.end==null).map(e=>e.ua)),upP=sum(f.events.filter(e=>e.end==null).map(uap)),uaT=sum(activeLots(f).map(uaLot));
+ const tr=trend30(f),dlt=tr[29]-tr[0];
+ const mods=f.modules.map(m=>({m,i:modInfo(f,m)}));
+ const queue=mods.filter(x=>x.i.cur).sort((a,b)=>a.i.inN-b.i.inN);
+ const rm=rainMTD(f),g=gmdAvg(f);
+ const pct=rm.norm?Math.round((rm.val/rm.norm-1)*100):0;
+ const alerts=[];
+ activeLots(f).filter(l=>!openOfLot(f,l.id)).forEach(l=>alerts.push(`<div class="alert"><span><b>${esc(l.name)} sem piquete.</b> ${nf(uaLot(l),0)} UA fora da conta de lotação.</span><button type="button" class="btn sm" data-act="move" data-lot="${l.id}">Colocar em piquete</button></div>`));
+ activeLots(f).forEach(l=>{const w=lastW(l);const age=w?T-w.day:null;if(!w||age>60)alerts.push(`<div class="alert info"><span><b>${esc(l.name)} ${w?`sem pesagem há ${age} dias`:'nunca pesado'}.</b> A UA usa ${w?'a última pesagem':'o peso padrão da categoria'}.</span><button type="button" class="btn sm" data-act="weigh" data-lot="${l.id}">Registrar pesagem</button></div>`);});
+ try{const sc=projScope(projModel(f),'farm'),c0=sc.cap[1][0];if(c0>0&&sc.cur>c0*1.05)alerts.push(`<div class="alert"><span><b>Lotação de pasto ${Math.round((sc.cur/c0-1)*100)}% acima do que o pasto sustenta em ${MES[sc.mo[0].m]}.</b> ${nf(sc.cur,2)} contra ${nf(c0,2)} UA/ha no cenário normal.</span><button type="button" class="btn sm" data-act="goProj">Ver projeção</button></div>`);}catch(e){}
+ if(realR(f,T)==null)alerts.push(`<div class="alert info"><span><b>Chuva de hoje sem registro.</b> Até lançar, o cálculo usa o estimado do centroide.</span><button type="button" class="btn sm" data-act="rain" data-day="${T}">Registrar chuva</button></div>`);
+ const months=[];for(let k=5;k>=0;k--){const r=monthRange(k);let v=0;for(let d=r.a;d<r.b;d++)v+=rainVal(f,d);months.push({m:r.m,v,norm:N_RAIN[r.m]*f.rainMul*(r.b-r.a)/r.full});}
+ const mx=Math.max(...months.map(x=>Math.max(x.v,x.norm)),10)*1.15;
+ let rc='';months.forEach((x,i)=>{const gx=14+i*58,h=v=>v/mx*104;rc+=`<rect x="${gx}" y="${120-h(x.v)}" width="34" height="${h(x.v)}" rx="4" fill="${x.v>=x.norm?'#C6F24E':'#5DB383'}"/><line x1="${gx-4}" x2="${gx+38}" y1="${120-h(x.norm)}" y2="${120-h(x.norm)}" stroke="#EEF3EC" stroke-width="1.5" stroke-dasharray="4 4"/><text x="${gx+17}" y="${114-h(Math.max(x.v,x.norm))}" text-anchor="middle" font-size="12" font-weight="600" fill="#EEF3EC">${Math.round(x.v)}</text><text x="${gx+17}" y="138" text-anchor="middle" font-size="12" fill="#9DB0A3">${MES[x.m]}</text>`;});
+ const fc=[1,2,3].map(k=>T+k);
+ return `<div class="view">
+ <section class="row" aria-label="Resumo">
+  <div class="hero col" style="flex:2 1 340px;gap:10px">
+   <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;justify-content:space-between"><div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:600">Lotação global da fazenda</div>
+   <div class="big" style="font-size:64px">${A?nf(uaP/A,2):'–'} <span style="font-size:22px;letter-spacing:0">UA/ha</span></div></div>
+   <div style="font-size:14px;line-height:1.5">${upP<uaP-0.5&&A?`<b>${nf(upP/A,2)} UA/ha de pasto</b> · ${Math.round((1-upP/uaP)*100)}% do cocho<br>`:''}${nf(uaP,0)} UA em pastejo · ${nf(A,1)} ha úteis${uaT-uaP>0.5?`<br>${nf(uaT-uaP,0)} UA fora dos piquetes`:''}</div></div>
+   <div style="display:flex;align-items:center;gap:12px"><div style="flex-grow:1">${spark(tr,300,44,'#0B120E','Lotação global dos últimos 30 dias')}</div><span style="font-size:13px;font-weight:600;white-space:nowrap">${dlt>=0?'+':''}${nf(dlt,2)} em 30 dias</span></div>
+  </div>
+  <div class="card col tile" style="flex:1 1 180px;justify-content:space-between"><div class="k">Piquetes</div><div class="big" style="font-size:40px">${nOcc} <span style="font-size:16px;font-weight:500;color:var(--muted)">${pl(nOcc,'ocupado','ocupados')}</span></div><div class="k">${nRest} em descanso</div></div>
+  <div class="card col tile" style="flex:1 1 180px;justify-content:space-between"><div class="k">Chuva em ${MES[rm.mo]}</div><div class="big" style="font-size:40px">${nf(rm.val,0)} <span style="font-size:16px;font-weight:500;color:var(--muted)">mm</span></div><div class="k">${pct>0?'+':''}${pct}% da normal</div></div>
+  <div class="card col tile" style="flex:1 1 180px;justify-content:space-between"><div class="k">GMD do rebanho</div><div class="big" style="font-size:40px">${g!=null?nf(g,2):'–'} <span style="font-size:16px;font-weight:500;color:var(--muted)">kg/dia</span></div><div class="k">última pesagem de cada lote</div></div>
+ </section>
+ <div class="row" style="gap:20px;align-items:stretch">
+  <section class="card col" style="flex:999 1 460px" aria-label="Fila de trocas"><div class="head"><h2 class="h2">Fila de trocas</h2><button type="button" class="btn pri sm" data-act="move">${ic('move')} Registrar movimentação</button></div>
+   ${queue.length?`<ul class="list">${queue.map(x=>queueRow(f,x)).join('')}</ul>`:'<p class="k" style="margin:0">Nenhum módulo com lote. Vincule lotes aos módulos para ver as próximas trocas.</p>'}</section>
+  <section class="card col" style="flex:1 1 320px" aria-label="Mapa resumido"><div class="head"><h2 class="h2">Mapa</h2><a class="btn sm" href="#mapa">Abrir mapa</a></div><a href="#mapa" aria-label="Abrir o mapa completo" style="display:block">${mapSVG(f,stateFill(f),{mini:true,label:'Mapa resumido'})}</a>
+   <div class="legend" style="font-size:12px"><span><i class="sw" style="background:#C6F24E"></i>Ocupado</span><span><i class="sw" style="background:#1E3A2B;border:1px solid #35483C"></i>0–6 d</span><span><i class="sw" style="background:#2F6B4A"></i>7–13 d</span><span><i class="sw" style="background:#5DB383"></i>14 d+</span></div></section>
+ </div>
+ ${alerts.length?`<section class="col" aria-label="Alertas">${alerts.join('')}</section>`:''}
+ ${mods.length?`<section class="row" aria-label="Módulos">${mods.map(({m,i})=>{const ln=i.cur?(lotOf(f,i.lotId)||{}).name:null,rr=restReal(f,m),plan=(m.order.length-1)*m.occ;
+  return `<button type="button" class="card modc" data-act="goMod" data-id="${m.id}">
+   <span style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;width:100%"><span style="display:flex;align-items:center;gap:8px"><span class="sw" style="background:${m.color}"></span><span style="font-family:'Space Grotesk',Inter,sans-serif;font-size:19px;font-weight:600">${esc(m.name)}</span></span><span class="k" style="font-size:12px">${m.order.length} piq. · ${nf(i.area,0)} ha</span></span>
+   <span style="display:flex;align-items:baseline;gap:8px"><span class="big" style="font-size:34px">${nf(i.lot,2)}</span><span class="k">UA/ha no módulo${i.lotP<i.lot-0.005?` · <span style="color:#6FA8FF">${nf(i.lotP,2)} de pasto</span>`:''}</span></span>
+   <span style="font-size:14px">${i.cur?`<span style="color:var(--lime);font-weight:600">${esc(ln)} em ${esc(pad(f,i.cur).name)}</span> · dia ${i.day} de ${m.occ}`:'<span class="muted">sem lote no módulo</span>'}</span>
+   ${i.cur?`<span class="seg" aria-hidden="true" style="width:100%">${[...Array(Math.max(m.occ,i.day))].map((_,k)=>`<i class="${k<i.day?(k<m.occ?'on':'late'):''}"></i>`).join('')}</span>`:''}
+   <span style="display:flex;justify-content:space-between;width:100%;border-top:1px solid var(--line);padding-top:10px" class="k"><span>Descanso real (90 d)</span><span style="color:${rr!=null&&rr<plan-2?'#FF8A3D':'#EEF3EC'};font-weight:600">${rr!=null?Math.round(rr)+' d':'—'} <span class="k" style="font-weight:400">/ plano ${plan} d</span></span></span>
+  </button>`;}).join('')}</section>`:''}
+ <div class="row" style="gap:20px;align-items:stretch">
+  <section class="card col" style="flex:1 1 420px" aria-label="Chuva"><div class="head"><h2 class="h2">Chuva, 6 meses</h2><a class="btn sm" href="#clima">Ver clima</a></div>
+   <svg viewBox="0 0 360 145" role="img" aria-label="Chuva dos últimos 6 meses: ${months.map(x=>MES[x.m]+' '+Math.round(x.v)+' mm').join(', ')}" style="width:100%;height:auto">${rc}<line x1="8" x2="356" y1="120" y2="120" stroke="#35483C"/></svg>
+   <div class="legend" style="font-size:12px"><span><i class="sw" style="background:#C6F24E"></i>Acima da normal</span><span><i class="sw" style="background:#5DB383"></i>Abaixo</span><span><svg width="18" height="4" aria-hidden="true"><line x1="0" x2="18" y1="2" y2="2" stroke="#EEF3EC" stroke-width="1.5" stroke-dasharray="4 4"/></svg>Normal</span></div></section>
+  <section class="card col" style="flex:1 1 360px" aria-label="Previsão"><h2 class="h2">Próximos 3 dias</h2><ul class="list">${fc.map(d=>{const t=temps(f,d),r=rainEst(f,d);return `<li class="li" style="justify-content:space-between"><span style="font-weight:600;white-space:nowrap;flex:1 1 auto">${fDW(d)}</span><span style="color:${r>0?'#C6F24E':'#9DB0A3'};font-weight:600;white-space:nowrap;width:76px;text-align:right">${r>0?nf(r,1)+' mm':'sem chuva'}</span><span class="k" style="padding-right:8px;white-space:nowrap;width:70px;text-align:right">${Math.round(t[0])}° / ${Math.round(t[1])}°</span></li>`;}).join('')}</ul></section>
+ </div></div>`;
+}
+
+/* ---------- MAPA ---------- */
+function vMapa(f){
+ const st=gPads(f).map(p=>padState(f,p)),hasUnk=st.some(s=>s.kind==='unk');
+ return `<div class="view"><section class="card col o-map" aria-label="Mapa">
+  <div class="head"><h1 class="big" style="font-size:30px;margin:0">Mapa</h1><div class="row" style="gap:10px"><a class="btn" href="#modulos">${ic('grid')} Editar módulos</a><button type="button" class="btn pri" data-act="move">${ic('move')} Registrar movimentação</button></div></div>
+  ${f.modules.length?`<div class="chips" role="group" aria-label="Filtrar por módulo"><button type="button" class="chip" data-act="filter" data-id="" aria-pressed="${!S.filter}">Todos</button>${f.modules.map(m=>`<button type="button" class="chip" data-act="filter" data-id="${m.id}" aria-pressed="${S.filter===m.id}">${esc(m.name)}</button>`).join('')}</div>`:''}
+  <div class="legend"><span><i class="sw" style="background:#C6F24E"></i>Ocupado</span><span><i class="sw" style="background:#1E3A2B;border:1px solid #35483C"></i>Descanso 0–6 d</span><span><i class="sw" style="background:#2F6B4A"></i>7–13 d</span><span><i class="sw" style="background:#5DB383"></i>14 d ou mais</span>${hasUnk?'<span><i class="sw" style="background:#3A433E"></i>Sem data</span>':''}<span><svg width="12" height="16" viewBox="-9 -24 18 25" aria-hidden="true"><path d="M0,0 C-3,-6 -8,-9 -8,-15 A8,8 0 1 1 8,-15 C8,-9 3,-6 0,0 Z" fill="#2F6FED" stroke="#fff" stroke-width="1.5"/></svg>Bebedouro</span></div>
+  ${mapSVG(f,stateFill(f))}
+  <p class="k" style="margin:0">Toque no piquete para ver o cartão. Ocupado: lotação instantânea e dia de uso. Vazio: dias de descanso e lotação global do ciclo. Contorno laranja: passou dos dias planejados.</p>
+ </section></div>`;
+}
+
+/* ---------- cartão do piquete ---------- */
+function ovPad(f,p){
+ const T=S.today,s=padState(f,p),m=modOfPad(f,p.id);
+ const close=`<button type="button" class="iconbtn" data-act="close" aria-label="Fechar">${ic('x',20)}</button>`;
+ const sub=`<div class="k" style="margin-top:-10px">${m?esc(m.name):(p.grazing?'Avulso':'Fora do pastejo')} · ${esc(p.species||'capim não informado')} · ${nf(p.area,1)} ha</div>`;
+ const hd=(chip)=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><span class="big" style="font-size:32px">${esc(p.name)}</span><span style="display:flex;align-items:center;gap:6px">${chip}${close}</span></div>${sub}`;
+ if(!p.grazing)return hd('<span class="pill" style="background:#18231C;color:#9DB0A3">Não pastejo</span>')+'<p class="k">Área fora do cálculo de lotação.</p>';
+ if(s.kind==='occ'){
+  const lots=s.lots.map(id=>lotOf(f,id)).filter(Boolean);const heads=sum(lots.map(l=>l.heads));const occ=m?m.occ:null;const late=occ&&s.day>occ;
+  let nextName='—';if(m){const i=m.order.indexOf(p.id);nextName=pad(f,m.order[(i+1)%m.order.length]).name;}
+  const segs=occ?`<div class="seg" aria-hidden="true">${[...Array(Math.max(occ,s.day))].map((_,k)=>`<i class="${k<s.day?(k<occ?'on':'late'):''}"></i>`).join('')}</div>`:'';
+  return hd(`<span class="pill" style="background:${late?'#FF8A3D':'#C6F24E'};color:#0B120E">${late?'Atrasado':'Ocupado'}</span>`)+`
+  <div style="background:#0B120E;border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:4px"><div class="k">Lotação instantânea</div><div class="big" style="font-size:48px;color:#C6F24E">${nf(s.inst,2)} <span style="font-size:18px;color:#EEF3EC">UA/ha</span></div><div class="k" style="margin-top:4px">dia ${s.day}${occ?' de '+occ:''} em uso</div>${s.up<s.ua-0.5?`<div style="margin-top:8px;font-size:14px">De pasto: <b style="color:#6FA8FF">${nf(s.instP,2)} UA/ha</b> · suplemento ${lots.filter(l=>l.supl>0).map(l=>nf(l.supl,2)+'% do PV').join(' + ')}</div>`:''}</div>
+  <dl class="kv"><div><dt>Lote</dt><dd>${lots.map(l=>esc(l.name+' · '+l.cat)).join('<br>')}</dd></div><div><dt>Animais</dt><dd>${nf(heads,0)} cab. · ${nf(s.ua,0)} UA</dd></div>
+  <div><dt>Entrada</dt><dd>${fDW(s.start)}</dd></div><div><dt>Saída prevista</dt><dd>${occ?fDW(s.start+occ):'—'}</dd></div>
+  <div><dt>Destino</dt><dd>${esc(nextName)}</dd></div><div><dt>Área</dt><dd>${nf(p.area,1)} ha</dd></div></dl>${segs}
+  <button type="button" class="btn pri" data-act="move" data-lot="${lots[0]?lots[0].id:''}">${ic('move')} Mover lote</button>`;
+ }
+ let entry='—',restAt='';
+ if(m){const mi=modInfo(f,m);if(mi.cur){const n=m.order.length,kk=(m.order.indexOf(p.id)-m.order.indexOf(mi.cur)+n)%n;if(kk>0){const ed=T+Math.max(mi.inN,0)+(kk-1)*m.occ;entry=fDW(ed);if(s.kind==='rest')restAt=(s.rest+ed-T)+' dias';}}}
+ if(s.kind==='rest'&&s.ocorr!=null){const ln=(lotOf(f,s.lot)||{name:'—'}).name;
+  return hd(`<span class="pill" style="background:${restFill(s.rest)};color:${restFill(s.rest)==='#5DB383'?'#0B120E':'#FFFFFF'}">Descanso · ${s.rest} ${pl(s.rest,'dia','dias')}</span>`)+`
+  <div style="background:#0B120E;border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:4px"><div class="k">Lotação ocorrida no último pastejo</div><div class="big" style="font-size:44px">${nf(s.ocorr,2)} <span style="font-size:17px">UA/ha</span> <span style="font-size:22px;color:#9DB0A3">× ${s.dias} ${pl(s.dias,'dia','dias')}</span></div><div class="k" style="margin-top:4px">fixa desde a saída</div></div>${s.ocorrP!=null&&s.ocorrP<s.ocorr-0.005?`<div class="alert info"><span>Descontando o suplemento, de pasto: ocorrida <b style="color:#6FA8FF">${nf(s.ocorrP,2)}</b> · global do ciclo <b style="color:#6FA8FF">${nf(s.globP,2)}</b> UA/ha</span></div>`:''}
+  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:0 4px"><div style="display:flex;flex-direction:column;gap:2px"><span class="k">Lotação global do ciclo</span><span class="k" style="font-size:12px">cai a cada dia vazio</span></div><span class="big" style="font-size:30px">${nf(s.glob,2)} <span style="font-size:14px;font-weight:500">UA/ha</span></span></div>
+  <dl class="kv"><div><dt>Último lote</dt><dd>${esc(ln)} · ${nf(s.uaAvg,0)} UA</dd></div><div><dt>Pastejo</dt><dd>${fD(s.start)} a ${fD(s.end-1)}</dd></div>
+  <div><dt>Próxima entrada</dt><dd>${entry}</dd></div><div><dt>Descanso na entrada</dt><dd>${restAt||'—'}</dd></div></dl>
+  <button type="button" class="btn" data-act="move" data-dest="${p.id}">Colocar lote aqui</button>`;
+ }
+ if(s.kind==='rest')return hd(`<span class="pill" style="background:${restFill(s.rest)};color:#FFFFFF">Descanso · ${s.rest} d</span>`)+`<p style="margin:0;font-size:15px">Saiu gado em ${fDW(s.end)}. A lotação ocorrida aparece depois do primeiro pastejo registrado no app.</p><dl class="kv"><div><dt>Próxima entrada</dt><dd>${entry}</dd></div><div><dt>Descanso na entrada</dt><dd>${restAt||'—'}</dd></div></dl><button type="button" class="btn" data-act="move" data-dest="${p.id}">Colocar lote aqui</button>`;
+ return hd('<span class="pill" style="background:#3A433E;color:#EEF3EC">Sem data</span>')+`<p style="margin:0;font-size:15px">Não se sabe quando saiu gado deste piquete. O descanso passa a contar na primeira saída registrada.</p><button type="button" class="btn" data-act="move" data-dest="${p.id}">Colocar lote aqui</button>`;
+}
+
+/* ---------- movimentação ---------- */
+function padLabel(f,p){const s=padState(f,p);return s.kind==='occ'?'ocupado':s.kind==='rest'?'descanso '+s.rest+' d':'sem data';}
+function ovMove(f){
+ const o=S.ov,T=S.today;
+ const lid=o.lot||(activeLots(f)[0]||{}).id;const lot=lotOf(f,lid);
+ if(!lot)return `<h2 class="h2">Registrar movimentação</h2><p class="k">Cadastre um lote na aba Rebanho primeiro.</p><button type="button" class="btn" data-act="close">Fechar</button>`;
+ const e=openStay(f,lid);
+ let dest=o.dest;if(!dest&&e){const m=modOfPad(f,e.pad);if(m){const i=m.order.indexOf(e.pad);dest=m.order[(i+1)%m.order.length];}}
+ if(!dest){const m=f.modules.find(x=>x.lotId===lid);if(m)dest=m.order[0];}
+ return `<form class="col" data-act="doMove"><div class="head"><h2 class="h2">Registrar movimentação</h2><button type="button" class="iconbtn" data-act="close" aria-label="Fechar">${ic('x',20)}</button></div>
+ <div class="field"><label for="mv-lot">Lote</label><select id="mv-lot" name="lot" class="in" data-chg="mvlot">${activeLots(f).map(l=>{const oe=openOfLot(f,l.id);return `<option value="${l.id}"${l.id===lid?' selected':''}>${esc(l.name)} · ${nf(uaLot(l),0)} UA · ${oe?'em '+esc(pad(f,oe.pad).name):'sem piquete'}</option>`;}).join('')}</select></div>
+ <p class="k" style="margin:0">${e?`Está em <b style="color:var(--text)">${esc(pad(f,e.pad).name)}</b> desde ${fDW(e.start)} (dia ${T-e.start+1}).`:'Este lote não está em nenhum piquete.'}</p>
+ <div class="field"><label for="mv-dest">Destino</label><select id="mv-dest" name="dest" class="in">${gPads(f).map(p=>`<option value="${p.id}"${p.id===dest?' selected':''}>${esc(p.name)} · ${padLabel(f,p)}${modOfPad(f,p.id)?' · '+esc(modOfPad(f,p.id).name):''}</option>`).join('')}</select></div>
+ <div class="field"><label for="mv-date">Data da movimentação</label><input id="mv-date" name="date" type="date" class="in" value="${iso(T)}" max="${iso(T)}"${e?` min="${iso(e.start)}"`:''}></div>
+ ${o.err?`<p class="err" role="alert">${esc(o.err)}</p>`:''}
+ <div class="row" style="gap:10px"><button type="button" class="btn" data-act="close" style="flex:1 1 0">Cancelar</button><button type="submit" class="btn pri" style="flex:1 1 0">Confirmar</button></div></form>`;
+}
+function doMove(fm){
+ const f=F(),fd=new FormData(fm),lid=fd.get('lot'),dest=fd.get('dest'),d=fromIso(fd.get('date')),T=S.today;
+ const fail=m=>{S.ov=Object.assign({},S.ov,{lot:lid,dest,err:m});renderOv();};
+ if(!lid||!dest)return fail('Escolha o lote e o destino.');
+ if(isNaN(d))return fail('Informe a data.');
+ if(d>T)return fail('A data não pode ser depois de hoje.');
+ const err=mutate(f,()=>{const l=lotOf(f,lid);if(d<firstDay(l))return `${l.name} foi formado em ${fD(firstDay(l))}.`;const st=openStay(f,lid);
+  if(st&&st.pad===dest)return 'O lote já está nesse piquete.';
+  if(st&&d<st.start)return `A entrada atual foi em ${fD(st.start)}; a saída não pode ser antes disso.`;
+  if(st){if(d===st.start)f.stays.splice(f.stays.indexOf(st),1);else st.end=d;}
+  f.stays.push({id:uid('s'),lot:lid,pad:dest,start:d,end:null});});
+ if(err)return fail(err);
+ S.ov=null;toast(`${lotOf(f,lid).name} → ${pad(f,dest).name}`);render();
+}
+
+/* ---------- MÓDULOS ---------- */
+function vMod(f){
+ const D=S.draft;
+ const list=`<aside class="col" style="flex:1 1 240px;min-width:0" aria-label="Lista de módulos">
+  ${f.modules.map(m=>{const i=modInfo(f,m),ed=D&&D.id===m.id;return `<button type="button" class="card modc" data-act="editMod" data-id="${m.id}" aria-pressed="${!!ed}" style="flex:none;padding:16px">
+   <span style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%"><span style="display:flex;align-items:center;gap:8px"><span class="sw" style="background:${m.color}"></span><span style="font-family:'Space Grotesk',Inter,sans-serif;font-size:18px;font-weight:600">${esc(m.name)}</span></span>${ed?'<span style="font-size:12px;font-weight:600;color:var(--lime)">editando</span>':''}</span>
+   <span class="k">${m.order.map(id=>esc(pad(f,id).name)).join(' · ')||'sem piquetes'}</span>
+   <span class="k">${nf(i.area,0)} ha · ${esc((lotOf(f,m.lotId)||{name:'sem lote'}).name)} · ${m.occ} d de ocupação</span></button>`;}).join('')}
+  <button type="button" class="btn" data-act="newMod" style="border-style:dashed;min-height:48px">${ic('plus')} Novo módulo</button>
+  <p class="k" style="margin:0 4px">Avulsos: ${gPads(f).filter(p=>!modOfPad(f,p.id)).map(p=>esc(p.name)).join(', ')||'nenhum'}</p></aside>`;
+ let fill;
+ if(D){fill=p=>{if(!p.grazing)return{fill:'#18231C',ink:'#7F9286',l1:p.name,l3:'fora do pastejo',aria:p.name+', fora do pastejo'};
+  const i=D.order.indexOf(p.id);if(i>=0)return{fill:'#C6F24E',ink:'#0B120E',badge:i+1,l1:p.name,l3:nf(p.area,1)+' ha',aria:`${p.name}, posição ${i+1} no módulo em edição`};
+  const m=modOfPad(f,p.id);if(m&&m.id!==D.id)return{fill:m.color,op:0.55,ink:'#EEF3EC',l1:p.name,l3:m.name,aria:`${p.name}, no ${m.name}`};
+  return{fill:'#26342B',ink:'#EEF3EC',l1:p.name,l3:'avulso',aria:p.name+', avulso'};};}
+ else fill=p=>{if(!p.grazing)return{fill:'#18231C',ink:'#7F9286',l1:p.name,l3:'fora do pastejo',aria:p.name};const m=modOfPad(f,p.id);return m?{fill:m.color,op:0.75,ink:'#EEF3EC',l1:p.name,l3:m.name,aria:`${p.name}, ${m.name}`}:{fill:'#26342B',ink:'#EEF3EC',l1:p.name,l3:'avulso',aria:p.name+', avulso'};};
+ const mapc=`<section class="card col" style="flex:999 1 500px" aria-label="Mapa de seleção"><div class="head"><h2 class="h2">${D?'Toque para incluir ou tirar':'Piquetes por módulo'}</h2>
+  <div class="legend">${D?'<span><i class="sw" style="background:#C6F24E"></i>No módulo em edição</span>':''}${f.modules.filter(m=>!D||m.id!==D.id).map(m=>`<span><i class="sw" style="background:${m.color}"></i>${esc(m.name)}</span>`).join('')}<span><i class="sw" style="background:#26342B;border:1px solid #35483C"></i>Avulso</span></div></div>
+  ${mapSVG(f,fill,{label:'Mapa de seleção de piquetes'})}<p class="k" style="margin:0">${D?'Os números mostram a ordem de rotação. Um piquete de outro módulo sai de lá quando você salvar.':'Toque num piquete ou num módulo da lista para editar.'}</p></section>`;
+ let panel='';
+ if(D){
+  const pads=D.order.map(id=>pad(f,id)),area=sum(pads.map(p=>p.area)),lot=lotOf(f,D.lotId),n=D.order.length;
+  const moves=D.order.map(id=>({p:pad(f,id),m:modOfPad(f,id)})).filter(x=>x.m&&x.m.id!==D.id);
+  const lotOther=lot&&f.modules.find(m=>m.lotId===lot.id&&m.id!==D.id);
+  const orig=f.modules.find(m=>m.id===D.id);
+  panel=`<section class="card col" style="flex:1 1 340px;border-color:#35483C" aria-label="Editar módulo"><form class="col" data-act="saveMod">
+  <div class="head"><h2 class="h2">${orig?'Editar módulo':'Novo módulo'}</h2><button type="button" class="iconbtn" data-act="cancelMod" aria-label="Fechar edição">${ic('x',20)}</button></div>
+  <div class="field"><label for="d-name">Nome</label><input id="d-name" class="in" type="text" value="${esc(D.name)}" data-bind="draft.name"></div>
+  <div class="field"><label for="d-lot">Lote vinculado</label><select id="d-lot" class="in" data-chg="dlot"><option value="">Sem lote</option>${activeLots(f).map(l=>`<option value="${l.id}"${l.id===D.lotId?' selected':''}>${esc(l.name)} · ${esc(l.cat)} · ${nf(uaLot(l),0)} UA</option>`).join('')}</select>${lotOther?`<span class="k" style="color:var(--warn)">${esc(lot.name)} sai do ${esc(lotOther.name)} ao salvar.</span>`:''}</div>
+  <div class="col" style="gap:8px"><div style="display:flex;justify-content:space-between" class="k"><span>Ordem de rotação</span><span>${n} ${pl(n,'piquete','piquetes')} · ${nf(area,1)} ha</span></div>
+  ${n?`<ol class="list">${pads.map((p,i)=>`<li class="li"><span style="width:20px;font-weight:700;color:var(--lime)">${i+1}</span><span class="grow" style="font-weight:600">${esc(p.name)}</span><span class="k" style="white-space:nowrap">${nf(p.area,1)} ha</span>
+   <button type="button" class="iconbtn" data-act="dmv" data-i="${i}" data-d="-1" aria-label="Subir ${esc(p.name)}"${i===0?' disabled':''}>${ic('up')}</button><button type="button" class="iconbtn" data-act="dmv" data-i="${i}" data-d="1" aria-label="Descer ${esc(p.name)}"${i===n-1?' disabled':''}>${ic('down')}</button><button type="button" class="iconbtn" data-act="drem" data-i="${i}" aria-label="Tirar ${esc(p.name)}">${ic('x')}</button></li>`).join('')}</ol>`:'<p class="k" style="margin:0">Toque nos piquetes do mapa.</p>'}
+  ${moves.length?`<span class="k" style="color:var(--warn)">${moves.map(x=>esc(x.p.name)+' sai do '+esc(x.m.name)).join(' · ')}</span>`:''}</div>
+  <div class="field"><label for="d-occ">Dias de ocupação por piquete</label><input id="d-occ" class="in" type="number" min="1" max="60" value="${D.occ}" data-chg="docc"></div>
+  <div class="stat3"><div><div class="big" style="font-size:26px;color:var(--lime)">${n?(n-1)*D.occ+' d':'–'}</div><div class="k" style="font-size:12px">descanso</div></div><div><div class="big" style="font-size:26px">${n?n*D.occ+' d':'–'}</div><div class="k" style="font-size:12px">ciclo</div></div><div><div class="big" style="font-size:26px">${lot&&area?nf(uaLot(lot)/area,2):'–'}</div><div class="k" style="font-size:12px">UA/ha</div></div></div>
+  <div class="field"><label for="d-vig">Vale a partir de</label><input id="d-vig" class="in" type="date" value="${iso(D.vig)}" max="${iso(S.today)}" data-chg="dvig"><span class="k">A composição anterior fica no histórico. Ciclos já fechados não são recalculados.</span></div>
+  ${D.err?`<p class="err" role="alert">${esc(D.err)}</p>`:''}
+  <div class="row" style="gap:10px"><button type="button" class="btn" data-act="cancelMod" style="flex:1 1 0">Cancelar</button><button type="submit" class="btn pri" style="flex:1 1 0">Salvar módulo</button></div>
+  ${orig?`<button type="button" class="btn warn" data-act="delMod">${D.confirmDel?'Toque de novo para excluir':'Excluir módulo'}</button>`:''}
+  ${orig&&orig.history?`<div class="col" style="gap:6px;border-top:1px solid var(--line);padding-top:14px"><span class="k">Histórico de composição</span>${orig.history.slice().reverse().map(h=>`<span style="font-size:13px">desde ${fDY(h.from)}: ${h.order.map(id=>esc((pad(f,id)||{}).name)).join(' · ')||'vazio'}</span>`).join('')}</div>`:''}
+  </form></section>`;
+ }
+ return `<div class="view"><div class="head"><div class="col" style="gap:4px"><h1 class="big" style="font-size:34px;margin:0">Módulos</h1><p class="k" style="margin:0">Monte os módulos tocando nos piquetes e defina a ordem de rotação.</p></div></div>
+ <div class="row" style="gap:20px;align-items:flex-start">${list}${mapc}${panel}</div></div>`;
+}
+function startDraft(f,id,withPad){
+ const m=f.modules.find(x=>x.id===id);
+ if(m)S.draft={id:m.id,name:m.name,color:m.color,order:m.order.slice(),lotId:m.lotId||'',occ:m.occ,vig:S.today};
+ else{const used=new Set(f.modules.map(x=>x.color));const L='ABCDEFGHIJKLMNOP';let k=f.modules.length;while(f.modules.some(x=>x.name==='Módulo '+L[k]))k++;
+  S.draft={id:uid('m'),name:'Módulo '+(L[k]||k+1),color:MOD_COLORS.find(c=>!used.has(c))||MOD_COLORS[k%MOD_COLORS.length],order:withPad?[withPad]:[],lotId:'',occ:5,vig:S.today};}
+}
+function saveMod(){
+ const f=F(),D=S.draft;
+ D.name=(D.name||'').trim();
+ if(!D.name){D.err='Dê um nome ao módulo.';return render();}
+ if(!D.order.length){D.err='Inclua pelo menos um piquete.';return render();}
+ if(!(D.occ>=1)){D.err='Dias de ocupação precisa ser 1 ou mais.';return render();}
+ for(const m of f.modules){if(m.id===D.id)continue;const before=m.order.join();m.order=m.order.filter(id=>!D.order.includes(id));if(m.order.join()!==before)(m.history=m.history||[]).push({from:D.vig,order:m.order.slice()});if(D.lotId&&m.lotId===D.lotId)m.lotId=null;}
+ let m=f.modules.find(x=>x.id===D.id);
+ if(m){const changed=m.order.join()!==D.order.join();Object.assign(m,{name:D.name,order:D.order.slice(),lotId:D.lotId||null,occ:D.occ});if(changed)(m.history=m.history||[]).push({from:D.vig,order:D.order.slice()});}
+ else f.modules.push({id:D.id,name:D.name,color:D.color,order:D.order.slice(),lotId:D.lotId||null,occ:D.occ,history:[{from:D.vig,order:D.order.slice()}]});
+ S.draft=null;toast('Módulo salvo');render();
+}
+
+/* ---------- REBANHO ---------- */
+const activeLots=f=>f.lots.filter(l=>l.heads>0);
+function lastW(l){const w=l.weighs||[];return w.length?w[w.length-1]:null;}
+function gmdLast(l){const w=l.weighs||[];if(w.length<2)return null;const a=w[w.length-2],b=w[w.length-1],g=(b.kg-a.kg)/(b.day-a.day);return Math.abs(g)<0.005?0:g;}
+function gmdAvg(f){let s=0,n=0;activeLots(f).forEach(l=>{const g=gmdLast(l);if(g!=null){s+=g*l.heads;n+=l.heads;}});return n?s/n:null;}
+const LOGTXT={inicio:'Lote formado',peso:'Pesagem',entrada:'Entrada',saida:'Saída',transf_out:'Transferência para',transf_in:'Transferência de',cat:'Mudança de categoria'};
+function wChart(l,w,h){const ws=l.weighs||[];if(ws.length<2)return'<p class="k" style="margin:0">Duas pesagens ou mais mostram a curva de peso e o GMD.</p>';
+ const d0=ws[0].day,d1=ws[ws.length-1].day,mn=Math.min(...ws.map(x=>x.kg))-10,mx=Math.max(...ws.map(x=>x.kg))+10;
+ const X=d=>30+(d-d0)/(d1-d0||1)*(w-60),Y=v=>h-28-(v-mn)/(mx-mn)*(h-56);
+ let s=`<polyline points="${ws.map(x=>X(x.day).toFixed(1)+','+Y(x.kg).toFixed(1)).join(' ')}" fill="none" stroke="#C6F24E" stroke-width="3" stroke-linejoin="round"/>`;
+ ws.forEach(x=>{s+=`<circle cx="${X(x.day)}" cy="${Y(x.kg)}" r="5" fill="#0B120E" stroke="#C6F24E" stroke-width="2.5"/><text x="${X(x.day)}" y="${Y(x.kg)-12}" text-anchor="middle" font-size="12" font-weight="600" fill="#EEF3EC">${Math.round(x.kg)}</text><text x="${X(x.day)}" y="${h-8}" text-anchor="middle" font-size="11" fill="#9DB0A3">${fD(x.day)}</text>`;});
+ return `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Peso médio por pesagem: ${ws.map(x=>fD(x.day)+' '+Math.round(x.kg)+' kg').join(', ')}" style="width:100%;height:auto">${s}</svg>`;}
+function vReb(f){
+ const T=S.today,A=gArea(f),act=activeLots(f),uaT=sum(act.map(uaLot)),cab=sum(act.map(l=>l.heads)),g=gmdAvg(f);
+ const closed=f.lots.filter(l=>l.heads<=0);
+ const lw=act.map(l=>lastW(l)).filter(Boolean),last=lw.length?Math.max(...lw.map(x=>x.day)):null;
+ return `<div class="view"><div class="head"><div class="col" style="gap:4px"><h1 class="big" style="font-size:34px;margin:0">Rebanho</h1><p class="k" style="margin:0">UA = cabeças × peso médio ÷ 450. Vale a última pesagem; sem pesagem, o peso padrão da categoria. Pesagens e alterações podem ser lançadas com data passada: tudo é recalculado.</p></div></div>
+ <section class="row"><div class="hero" style="flex:2 1 260px"><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:600">Rebanho no app</div><div class="big" style="font-size:56px;margin-top:6px">${nf(uaT,0)} <span style="font-size:20px">UA</span></div><div style="font-size:14px;margin-top:6px">${nf(cab,0)} cabeças · ${act.length} ${pl(act.length,'lote','lotes')} · ${A?nf(uaT/A,2):'–'} UA/ha se tudo no pasto</div></div>
+ <div class="card col tile" style="flex:1 1 180px;justify-content:space-between"><div class="k">GMD médio</div><div class="big" style="font-size:40px">${g!=null?nf(g,2):'–'} <span style="font-size:16px;font-weight:500;color:var(--muted)">kg/dia</span></div><div class="k">ponderado por cabeças</div></div>
+ <div class="card col tile" style="flex:1 1 180px;justify-content:space-between"><div class="k">Última pesagem</div><div class="big" style="font-size:40px">${last!=null?(T-last)+' <span style="font-size:16px;font-weight:500;color:var(--muted)">dias</span>':'–'}</div><div class="k">${last!=null?fDW(last):'nenhuma'}</div></div></section>
+ <section class="row">${act.map(l=>{const e=openOfLot(f,l.id),w=lastW(l),gm=gmdLast(l);
+  return `<article class="card col" style="flex:1 1 320px">
+  <div class="head"><button type="button" data-act="lot" data-id="${l.id}" style="background:none;border:0;padding:0;cursor:pointer;text-align:left;color:inherit;min-height:44px"><span style="display:block;font-family:'Space Grotesk',Inter,sans-serif;font-size:20px;font-weight:600">${esc(l.name)}</span><span class="k">${esc(l.cat)} · ver histórico</span></button><span class="pill" style="background:${e?'#C6F24E':'#223028'};color:${e?'#0B120E':'#EEF3EC'}">${e?'em '+esc(pad(f,e.pad).name):'sem piquete'}</span></div>
+  <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px">
+   <div><div class="big" style="font-size:26px">${nf(l.heads,0)}</div><div class="k" style="font-size:12px">cabeças</div></div>
+   <div><div class="big" style="font-size:26px">${Math.round(l.weight)}</div><div class="k" style="font-size:12px">${w?(Math.abs(w.kg-l.weight)<0.5?'kg · '+fD(w.day):'kg · média c/ entradas'):'kg · padrão'}</div></div>
+   <div><div class="big" style="font-size:26px">${nf(uaLot(l),0)}</div><div class="k" style="font-size:12px">UA</div></div>
+   <div><div class="big" style="font-size:26px;color:${gm==null?'#EEF3EC':gm<0?'#FF8A3D':'#C6F24E'}">${gm!=null?nf(gm,2):'–'}</div><div class="k" style="font-size:12px">GMD kg/dia</div></div></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 8px 8px 12px;border-radius:12px;background:#0B120E"><span style="font-size:13px">${l.supl>0?`<b style="color:#6FA8FF">Suplemento ${nf(l.supl,2)}% do PV</b><br><span class="k">${nf(l.supl/100*l.weight,2)} kg/cab/dia</span>`:'<span class="k">Sem suplemento</span>'}</span><button type="button" class="btn sm" data-act="supl" data-lot="${l.id}">${l.supl>0?'Alterar':'Suplementar'}</button></div>
+  ${(l.weighs||[]).length>1?spark(l.weighs.map(x=>x.kg),300,40,'#C6F24E','Evolução do peso médio'):''}
+  <div class="row" style="gap:8px"><button type="button" class="btn pri sm" style="flex:1 1 0" data-act="weigh" data-lot="${l.id}">Pesar</button><button type="button" class="btn sm" style="flex:1 1 0" data-act="alter" data-lot="${l.id}">Alterar lote</button><button type="button" class="btn sm" style="flex:1 1 0" data-act="move" data-lot="${l.id}">Mover</button></div>
+  </article>`;}).join('')}
+ <form class="card col" style="flex:1 1 320px;border-style:dashed" data-act="addLot"><span style="font-family:'Space Grotesk',Inter,sans-serif;font-size:20px;font-weight:600">Novo lote</span>
+  <div class="field"><label for="nl-name">Nome</label><input id="nl-name" name="name" class="in" type="text" placeholder="Lote ${f.lots.length+1}"></div>
+  <div class="field"><label for="nl-cat">Categoria</label><select id="nl-cat" name="cat" class="in" data-chg="nlcat">${CATS.map(c=>`<option>${c[0]}</option>`).join('')}</select></div>
+  <div class="row" style="gap:12px"><div class="field" style="flex:1 1 110px"><label for="nl-h">Cabeças</label><input id="nl-h" name="heads" class="in" type="number" min="1"></div><div class="field" style="flex:1 1 110px"><label for="nl-w">Peso médio (kg)</label><input id="nl-w" name="weight" class="in" type="number" min="1" value="${CATS[0][1]}"></div></div>
+  <div class="field"><label for="nl-d">Formado em</label><input id="nl-d" name="date" type="date" class="in" value="${iso(T)}" max="${iso(T)}"></div>
+  <label class="chk"><input type="checkbox" name="pesado">Peso de pesagem (não é o padrão)</label>
+  <button type="submit" class="btn pri">${ic('plus')} Adicionar lote</button></form></section>
+ ${closed.length?`<section class="card col"><h2 class="h2">Lotes encerrados</h2><ul class="list">${closed.map(l=>`<li><button type="button" class="li" data-act="lot" data-id="${l.id}" style="width:100%;border:0;cursor:pointer;color:inherit;text-align:left"><span class="grow" style="font-weight:600">${esc(l.name)} · ${esc(l.cat)}</span><span class="k" style="padding-right:10px">${(l.log||[]).length} registros</span></button></li>`).join('')}</ul></section>`:''}</div>`;
+}
+function ovLot(f,l){
+ const T=S.today,e=openOfLot(f,l.id),ws=l.weighs||[];
+ const tl=[];(l.log||[]).forEach(x=>tl.push(x));f.stays.filter(x=>x.lot===l.id).forEach(x=>tl.push({day:x.start,type:'pasto',pad:x.pad,seq:-1}));
+ tl.sort((a,b)=>b.day-a.day||(b.seq||0)-(a.seq||0));
+ const txt=x=>x.type==='pasto'?`Entrou em ${esc((pad(f,x.pad)||{}).name)}`:x.type==='peso'?`Pesagem: ${Math.round(x.kg)} kg${x.n?` (${x.n} pesados)`:''}`:x.type==='entrada'?`Entrada de ${x.n} cab. · ${esc(x.reason)}`:x.type==='saida'?`Saída de ${x.n} cab. · ${esc(x.reason)}`:x.type==='transf_out'?`${x.n} cab. transferidas para ${esc(x.other)}`:x.type==='transf_in'?`${x.n} cab. recebidas de ${esc(x.other)}`:x.type==='supl'?(x.pct>0?`Suplemento: ${nf(x.pct,2)}% do PV`:'Suplemento encerrado'):x.type==='cat'?`Categoria: ${esc(x.from)} → ${esc(x.to)}`:x.type==='inicio'?`${esc(x.note||'Lote formado')}: ${x.heads} cab. · ${Math.round(x.weight)} kg`:'';
+ const canDel=x=>x.type!=='pasto'&&(x.type!=='inicio'||x.link);
+ const delBtn=x=>canDel(x)?`<button type="button" class="${S.ov.confirm===x.id?'btn warn sm':'iconbtn'}" data-act="delLog" data-lot="${l.id}" data-id="${x.id}" aria-label="Excluir registro de ${fD(x.day)}">${S.ov.confirm===x.id?'Excluir?':ic('trash')}</button>`:'';
+ const rows=ws.map((x,i)=>{const p=ws[i-1];let g=p?(x.kg-p.kg)/(x.day-p.day):null;if(g!=null&&Math.abs(g)<0.005)g=0;return `<tr><td>${fDY(x.day)}</td><td class="num" style="font-weight:600">${Math.round(x.kg)} kg</td><td class="num">${p?(x.kg-p.kg>=0?'+':'')+Math.round(x.kg-p.kg):'—'}</td><td class="num">${p?x.day-p.day:'—'}</td><td class="num" style="font-weight:600;color:${g==null?'inherit':g<0?'#FF8A3D':'#C6F24E'}">${g!=null?nf(g,2):'—'}</td></tr>`;}).reverse().join('');
+ const first=ws[0],lastw=ws[ws.length-1],gTot=ws.length>1?(lastw.kg-first.kg)/(lastw.day-first.day):null;
+ return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><span class="big" style="font-size:30px">${esc(l.name)}</span><button type="button" class="iconbtn" data-act="close" aria-label="Fechar">${ic('x',20)}</button></div>
+ <div class="k" style="margin-top:-10px">${esc(l.cat)} · ${l.heads>0?(openStay(f,l.id)?'em '+esc(pad(f,openStay(f,l.id).pad).name)+' desde '+fD(openStay(f,l.id).start):'sem piquete'):'encerrado'}</div>
+ <div class="stat3"><div><div class="big" style="font-size:24px">${nf(l.heads,0)}</div><div class="k" style="font-size:12px">cabeças</div></div><div><div class="big" style="font-size:24px">${Math.round(l.weight)} kg</div><div class="k" style="font-size:12px">${lastw?(Math.abs(lastw.kg-l.weight)<0.5?'pesado '+fD(lastw.day):'pesagem + entradas'):'peso padrão'}</div></div><div><div class="big" style="font-size:24px;color:var(--lime)">${gTot!=null?nf(gTot,2):'–'}</div><div class="k" style="font-size:12px">GMD no período</div></div></div>
+ ${l.heads>0?`<div class="row" style="gap:8px"><button type="button" class="btn pri sm" style="flex:1 1 0" data-act="weigh" data-lot="${l.id}">Pesar</button><button type="button" class="btn sm" style="flex:1 1 0" data-act="alter" data-lot="${l.id}">Alterar lote</button><button type="button" class="btn sm" style="flex:1 1 0" data-act="supl" data-lot="${l.id}">Suplemento</button></div>`:''}
+ <h3 class="h2" style="font-size:17px">Peso médio</h3>${wChart(l,380,170)}
+ ${ws.length?`<div class="scrollx"><table><thead><tr><th>Pesagem</th><th class="num">Peso</th><th class="num">Ganho</th><th class="num">Dias</th><th class="num">GMD</th></tr></thead><tbody>${rows}</tbody></table></div>`:''}
+ <h3 class="h2" style="font-size:17px">Histórico</h3><p class="k" style="margin:0">Excluir um registro recalcula cabeças, peso, UA e lotação de todos os dias seguintes. Transferência é excluída nos dois lotes.</p><ul class="list">${tl.slice(0,S.ov.all?999:30).map(x=>`<li class="li" style="min-height:48px;gap:12px"><span class="k" style="width:74px;flex:none">${fD(x.day)}${dt(x.day).getUTCFullYear()!==dt(S.today).getUTCFullYear()?' '+String(dt(x.day).getUTCFullYear()).slice(2):''}</span><span class="grow" style="font-size:14px">${txt(x)}</span>${delBtn(x)}</li>`).join('')}</ul>${tl.length>30&&!S.ov.all?`<button type="button" class="btn sm" data-act="lotAll">Ver todos os ${tl.length} registros</button>`:''}`;
+}
+function ovWeigh(f){
+ const o=S.ov,l=lotOf(f,o.lot),T=S.today,mn=firstDay(l),w=lastW(l);
+ return `<form class="col" data-act="doWeigh"><div class="head"><h2 class="h2">Pesagem · ${esc(l.name)}</h2><button type="button" class="iconbtn" data-act="close" aria-label="Fechar">${ic('x',20)}</button></div>
+ <p class="k" style="margin:0">${w?`Última: ${Math.round(w.kg)} kg em ${fDY(w.day)}.`:`Ainda sem pesagem; hoje vale o peso padrão (${Math.round(l.weight)} kg).`}</p>
+ <div class="field"><label for="pw-d">Data da pesagem</label><input id="pw-d" name="date" type="date" class="in" value="${iso(T)}" max="${iso(T)}"${mn>-1e8?` min="${iso(Math.min(mn,T))}"`:''}><span class="k">Pode ser uma data passada; pesagens posteriores continuam valendo a partir das suas datas.</span></div>
+ <div class="row" style="gap:12px"><div class="field" style="flex:1 1 140px"><label for="pw-kg">Peso médio (kg)</label><input id="pw-kg" name="kg" type="number" class="in" step="0.1" min="1" inputmode="decimal"></div>
+ <div class="field" style="flex:1 1 140px"><label for="pw-n">Animais pesados</label><input id="pw-n" name="n" type="number" class="in" min="1" placeholder="opcional"></div></div>
+ <p class="k" style="margin:0">Com a balança S3, peso e quantidade viriam direto da sessão de pesagem.</p>
+ ${o.err?`<p class="err" role="alert">${esc(o.err)}</p>`:''}
+ <div class="row" style="gap:10px"><button type="button" class="btn" data-act="close" style="flex:1 1 0">Cancelar</button><button type="submit" class="btn pri" style="flex:1 1 0">Salvar pesagem</button></div></form>`;
+}
+function doWeigh(fm){
+ const f=F(),lid=S.ov.lot,fd=new FormData(fm),d=fromIso(fd.get('date')),kg=parseFloat(String(fd.get('kg')).replace(',','.')),n=parseInt(fd.get('n'),10),T=S.today;
+ const fail=m=>{S.ov=Object.assign({},S.ov,{err:m});renderOv();};
+ if(isNaN(d)||d>T)return fail('Escolha uma data até hoje.');
+ if(!(kg>=30&&kg<=1200))return fail('Informe o peso médio em kg.');
+ const err=mutate(f,()=>{const l=lotOf(f,lid);if(d<firstDay(l))return `${l.name} foi formado em ${fDY(firstDay(l))}.`;if((l.weighs||[]).some(x=>x.day===d))return 'Já existe pesagem desse lote nesse dia. Exclua a anterior no histórico.';if(n>0){const st=stateAt(l._tl,d);if(st&&n>st.h)return `Em ${fD(d)} o lote tinha ${st.h} cabeças.`;}
+  l.log.push({id:uid('g'),seq:++f.seq,day:d,type:'peso',kg:r1(kg),n:n>0?n:null});});
+ if(err)return fail(err);
+ const l=lotOf(f,lid),ws=l.weighs,i=ws.findIndex(x=>x.day===d),g=i>0?(ws[i].kg-ws[i-1].kg)/(ws[i].day-ws[i-1].day):null;
+ S.ov=null;toast(`${l.name}: ${Math.round(kg)} kg em ${fD(d)}${g!=null?` · GMD ${nf(g,2)} kg/dia`:''}`);render();
+}
+function ovSupl(f){
+ const o=S.ov,l=lotOf(f,o.lot),T=S.today,mn=firstDay(l);
+ return `<form class="col" data-act="doSupl"><div class="head"><h2 class="h2">Suplemento · ${esc(l.name)}</h2><button type="button" class="iconbtn" data-act="close" aria-label="Fechar">${ic('x',20)}</button></div>
+ <p class="k" style="margin:0">${l.supl>0?`Hoje: ${nf(l.supl,2)}% do PV desde ${fDY(l.suplSince)}.`:'Hoje sem suplemento.'} Consumo total: ${nf(INTAKE,1)}% do PV. Até ${nf(LIMIAR,1)}% do PV o suplemento não desconta capim; acima disso, o excedente substitui capim.</p>
+ <div class="field"><label for="sp-d">A partir de</label><input id="sp-d" name="date" type="date" class="in" value="${iso(T)}" max="${iso(T)}"${mn>-1e8?` min="${iso(Math.min(mn,T))}"`:''}></div>
+ <div class="field"><label for="sp-p">Consumo (% do peso vivo)</label><input id="sp-p" name="pct" type="number" class="in" step="0.01" min="0" max="${INTAKE}" inputmode="decimal" value="${l.supl>0?l.supl:''}" placeholder="ex.: 0,3" data-bind="supl.pct"></div>
+ <div class="stat3" id="sp-prev" style="grid-template-columns:repeat(2,minmax(0,1fr))">${suplPrev(l,o.pct!=null?o.pct:l.supl)}</div>
+ <p class="k" style="margin:0">Use 0 para encerrar. Pode ser lançado no passado; vale até a próxima mudança.</p>
+ ${o.err?`<p class="err" role="alert">${esc(o.err)}</p>`:''}
+ <div class="row" style="gap:10px"><button type="button" class="btn" data-act="close" style="flex:1 1 0">Cancelar</button><button type="submit" class="btn pri" style="flex:1 1 0">Salvar</button></div></form>`;
+}
+function suplPrev(l,p){p=parseFloat(String(p==null?'':p).replace(',','.'));if(!(p>=0))p=0;p=Math.min(p,INTAKE);
+ return `<div><div class="big" style="font-size:22px">${nf(p/100*l.weight,2)}</div><div class="k" style="font-size:12px">kg/cab/dia</div></div><div><div class="big" style="font-size:22px">${nf(uaLot(l)*pastoF(p),0)}</div><div class="k" style="font-size:12px">UA de pasto (de ${nf(uaLot(l),0)})</div></div>`;}
+function doSupl(fm){
+ const f=F(),lid=S.ov.lot,fd=new FormData(fm),d=fromIso(fd.get('date')),raw=String(fd.get('pct')).trim().replace(',','.'),p=parseFloat(raw),T=S.today;
+ const fail=m=>{S.ov=Object.assign({},S.ov,{err:m});renderOv();};
+ if(isNaN(d)||d>T)return fail('Escolha uma data até hoje.');
+ if(raw===''||isNaN(p)||p<0)return fail('Informe o consumo em % do peso vivo (0 para encerrar).');
+ if(p>INTAKE)return fail(`Acima de ${nf(INTAKE,1)}% do PV o animal estaria fora do pasto.`);
+ const err=mutate(f,()=>{const l=lotOf(f,lid);if(d<firstDay(l))return `${l.name} foi formado em ${fDY(firstDay(l))}.`;const st=stateAt(l._tl,d);if(st&&Math.abs((st.sp||0)-p)<1e-9)return p>0?'Nessa data o lote já estava com esse consumo.':'Nessa data o lote já estava sem suplemento.';
+  l.log.push({id:uid('g'),seq:++f.seq,day:d,type:'supl',pct:r1(p*100)/100});});
+ if(err)return fail(err);
+ S.ov=null;toast(p>0?`${lotOf(f,lid).name}: suplemento ${nf(p,2)}% do PV desde ${fD(d)}`:`${lotOf(f,lid).name}: suplemento encerrado em ${fD(d)}`);render();
+}
+const REASONS={entrada:['Compra','Nascimento','Outro'],saida:['Venda','Morte','Abate','Descarte','Outro']};
+function ovAlter(f){
+ const o=S.ov,l=lotOf(f,o.lot),T=S.today,k=o.kind||'saida',mn=firstDay(l);
+ const others=activeLots(f).filter(x=>x.id!==l.id);
+ return `<form class="col" data-act="doAlter"><div class="head"><h2 class="h2">Alterar ${esc(l.name)}</h2><button type="button" class="iconbtn" data-act="close" aria-label="Fechar">${ic('x',20)}</button></div>
+ <p class="k" style="margin:0">${nf(l.heads,0)} cabeças · ${Math.round(l.weight)} kg · ${nf(uaLot(l),0)} UA. Vale a partir da data, que pode ser no passado; tudo depois dela é recalculado.</p>
+ <div class="chips" role="group" aria-label="Tipo de alteração">${[['saida','Saída'],['entrada','Entrada'],['transf','Transferir / apartar'],['cat','Categoria']].map(([v,t])=>`<button type="button" class="chip" data-act="altKind" data-v="${v}" aria-pressed="${k===v}">${t}</button>`).join('')}</div>
+ <div class="field"><label for="al-d">Data</label><input id="al-d" name="date" type="date" class="in" value="${iso(T)}" max="${iso(T)}"${mn>-1e8?` min="${iso(Math.min(mn,T))}"`:''}></div>
+ ${k!=='cat'?`<div class="field"><label for="al-n">Cabeças</label><input id="al-n" name="n" type="number" class="in" min="1"${k!=='entrada'?` max="${l.heads}"`:''}></div>`:''}
+ ${k==='entrada'||k==='saida'?`<div class="field"><label for="al-r">Motivo</label><select id="al-r" name="reason" class="in">${REASONS[k].map(r=>`<option>${r}</option>`).join('')}</select></div>`:''}
+ ${k==='entrada'?`<div class="field"><label for="al-w">Peso médio dos que entraram (kg)</label><input id="al-w" name="kg" type="number" class="in" min="1" value="${Math.round(l.weight)}"><span class="k">O peso do lote vira a média ponderada.</span></div>`:''}
+ ${k==='transf'?`<div class="field"><label for="al-to">Para</label><select id="al-to" name="to" class="in" data-chg="altTo"><option value="__new"${o.to==='__new'||!o.to?' selected':''}>Novo lote (apartar)</option>${others.map(x=>`<option value="${x.id}"${o.to===x.id?' selected':''}>${esc(x.name)} · ${esc(x.cat)}</option>`).join('')}</select></div>
+  ${(!o.to||o.to==='__new')?`<div class="row" style="gap:12px"><div class="field" style="flex:1 1 140px"><label for="al-nn">Nome do novo lote</label><input id="al-nn" name="newname" class="in" type="text" value="Lote ${f.lots.length+1}"></div><div class="field" style="flex:1 1 140px"><label for="al-nc">Categoria</label><select id="al-nc" name="newcat" class="in">${CATS.map(c=>`<option${c[0]===l.cat?' selected':''}>${c[0]}</option>`).join('')}</select></div></div><span class="k">O novo lote fica no piquete onde o lote de origem estava nessa data; mova depois se for o caso.</span>`:''}`:''}
+ ${k==='cat'?`<div class="field"><label for="al-c">Nova categoria</label><select id="al-c" name="cat" class="in">${CATS.map(c=>`<option${c[0]===l.cat?' selected':''}>${c[0]}</option>`).join('')}</select><span class="k">O peso continua o da pesagem vigente.</span></div>`:''}
+ ${o.err?`<p class="err" role="alert">${esc(o.err)}</p>`:''}
+ <div class="row" style="gap:10px"><button type="button" class="btn" data-act="close" style="flex:1 1 0">Cancelar</button><button type="submit" class="btn pri" style="flex:1 1 0">Salvar</button></div></form>`;
+}
+function doAlter(fm){
+ const f=F(),lid=S.ov.lot,k=S.ov.kind||'saida',fd=new FormData(fm),d=fromIso(fd.get('date')),T=S.today,n=parseInt(fd.get('n'),10);
+ const fail=m=>{S.ov=Object.assign({},S.ov,{err:m});renderOv();};
+ if(isNaN(d)||d>T)return fail('Escolha uma data até hoje.');
+ if(k!=='cat'&&!(n>0))return fail('Informe o número de cabeças.');
+ let msg='';
+ const err=mutate(f,()=>{
+  const l=lotOf(f,lid);if(d<firstDay(l))return `${l.name} foi formado em ${fDY(firstDay(l))}.`;
+  const st=stateAt(l._tl,d)||{h:0,w:l.weight};
+  if(k==='cat'){const c=fd.get('cat'),cur=(()=>{let c0=null;(l.log||[]).slice().sort((a,b)=>a.day-b.day||a.seq-b.seq).forEach(x=>{if(x.day<=d){if(x.type==='inicio')c0=x.cat;if(x.type==='cat')c0=x.to;}});return c0||l.cat;})();if(c===cur)return 'Nessa data o lote já era dessa categoria.';l.log.push({id:uid('g'),seq:++f.seq,day:d,type:'cat',from:cur,to:c});msg=`${l.name}: ${cur} → ${c}`;return;}
+  if(k==='entrada'){const kg=parseFloat(fd.get('kg'));if(!(kg>0))return 'Informe o peso médio dos que entraram.';l.log.push({id:uid('g'),seq:++f.seq,day:d,type:'entrada',n,reason:fd.get('reason'),kg});msg=`${l.name}: +${n} cab. em ${fD(d)}`;return;}
+  if(n>st.h)return `Em ${fD(d)} o lote tinha ${st.h} cabeças.`;
+  if(k==='saida'){l.log.push({id:uid('g'),seq:++f.seq,day:d,type:'saida',n,reason:fd.get('reason')});msg=`${l.name}: −${n} cab. em ${fD(d)}`;return;}
+  const to=fd.get('to'),link=uid('t');let dest;
+  if(to==='__new'){const nm=String(fd.get('newname')||'').trim()||('Lote '+(f.lots.length+1));if(f.lots.some(x=>x.name===nm&&x.heads>0))return 'Já existe um lote ativo com esse nome.';
+   dest={id:uid('l'),name:nm,cat:fd.get('newcat'),log:[{id:uid('g'),seq:++f.seq,day:d,type:'inicio',heads:n,weight:r1(st.w),cat:fd.get('newcat'),note:'Apartado do '+l.name,link}]};f.lots.push(dest);
+   const s=f.stays.find(x=>x.lot===l.id&&x.start<=d&&(x.end==null||d<x.end));if(s)f.stays.push({id:uid('s'),lot:dest.id,pad:s.pad,start:d,end:null});}
+  else{dest=lotOf(f,to);if(!dest)return 'Escolha o lote de destino.';if(d<firstDay(dest))return `${dest.name} foi formado em ${fDY(firstDay(dest))}.`;dest.log.push({id:uid('g'),seq:++f.seq,day:d,type:'transf_in',n,kg:r1(st.w),other:l.name,link});}
+  l.log.push({id:uid('g'),seq:++f.seq,day:d,type:'transf_out',n,other:dest.name,link});msg=`${n} cab.: ${l.name} → ${dest.name}`;
+ });
+ if(err)return fail(err);
+ S.ov=null;toast(msg);render();
+}
+function delLog(lotId,id){
+ const f=F();let msg='Registro excluído e tudo recalculado';
+ const err=mutate(f,()=>{const l=lotOf(f,lotId),x=(l.log||[]).find(y=>y.id===id);if(!x)return 'Registro não encontrado.';
+  if(x.link){const born=f.lots.find(y=>(y.log||[]).some(z=>z.type==='inicio'&&z.link===x.link));
+   f.lots.forEach(y=>{y.log=(y.log||[]).filter(z=>z.link!==x.link);});
+   if(born){f.lots=f.lots.filter(y=>y!==born);f.stays=f.stays.filter(s=>s.lot!==born.id);f.modules.forEach(m=>{if(m.lotId===born.id)m.lotId=null;});msg=`Transferência desfeita; ${born.name} removido`;}
+   else msg='Transferência excluída nos dois lotes';}
+  else{if(x.type==='inicio')return 'A formação do lote não pode ser excluída.';l.log=l.log.filter(y=>y.id!==id);}});
+ if(err){toast(err);S.ov.confirm=null;return renderOv();}
+ if(S.ov&&S.ov.type==='lot'&&!lotOf(f,S.ov.id))S.ov=null;else if(S.ov)S.ov.confirm=null;
+ toast(msg);render();
+}
+function addLot(fm){
+ const f=F(),fd=new FormData(fm),name=String(fd.get('name')||'').trim()||('Lote '+(f.lots.length+1)),h=parseInt(fd.get('heads'),10),w=parseFloat(fd.get('weight')),T=S.today;
+ let d=fromIso(fd.get('date'));if(isNaN(d)||d>T)d=T;
+ if(!(h>0)||!(w>0))return toast('Informe cabeças e peso');
+ mutate(f,()=>{const l={id:uid('l'),name,cat:fd.get('cat'),log:[{id:uid('g'),seq:++f.seq,day:d,type:'inicio',heads:h,weight:w,cat:fd.get('cat'),note:'Lote cadastrado'}]};
+  if(fd.get('pesado'))l.log.push({id:uid('g'),seq:++f.seq,day:d,type:'peso',kg:w,n:h});f.lots.push(l);});
+ toast(name+' cadastrado');render();
+}
+
+/* ---------- CLIMA ---------- */
+function vClima(f){
+ const T=S.today,d0=dt(T),y=d0.getUTCFullYear(),mo=d0.getUTCMonth();
+ const ma=dayUTC(y,mo,1),dim=dayUTC(y,mo+1,1)-ma;
+ let mReal=0,mCov=0,mVal=0;for(let d=ma;d<=T;d++){const r=realR(f,d);mVal+=rainVal(f,d);if(r!=null){mReal+=r;mCov++;}}
+ const mNorm=N_RAIN[mo]*f.rainMul*(T-ma+1)/dim;
+ const sa=dayUTC(mo>=9?y:y-1,9,1);let sVal=0,sNorm=0;for(let d=sa;d<=T;d++){sVal+=rainVal(f,d);sNorm+=N_RAIN[monthOf(d)]*f.rainMul/(dayUTC(dt(d).getUTCFullYear(),monthOf(d)+1,1)-dayUTC(dt(d).getUTCFullYear(),monthOf(d),1));}
+ const pct=(a,b)=>b?Math.round((a/b-1)*100):0;const sg=x=>(x>0?'+':'')+x+'%';
+ const today=realR(f,T);const fc=[...Array(7)].map((_,k)=>T+1+k);
+ const months=[];for(let k=11;k>=0;k--){const r=monthRange(k);let est=0,re=0,cov=0;for(let d=r.a;d<r.b;d++){est+=rainEst(f,d);const x=realR(f,d);if(x!=null){re+=x;cov++;}}months.push({m:r.m,est,re,cov,days:r.b-r.a,norm:N_RAIN[r.m]*f.rainMul*(r.b-r.a)/r.full});}
+ const mx=Math.max(...months.map(x=>Math.max(x.est,x.re,x.norm*1.25)),10)*1.12;
+ let ch='';const H=190,yb=200;
+ months.forEach((x,i)=>{const gx=34+i*57,h=v=>v/mx*H;
+  ch+=`<rect x="${gx}" y="${yb-h(x.est)}" width="20" height="${h(x.est)}" fill="none" stroke="#5DB383" stroke-width="1.5" rx="3"/>`;
+  if(x.cov)ch+=`<rect x="${gx+23}" y="${yb-h(x.re)}" width="20" height="${h(x.re)}" fill="#C6F24E" rx="3"/>`;
+  ch+=`<line x1="${gx-3}" x2="${gx+46}" y1="${yb-h(x.norm)}" y2="${yb-h(x.norm)}" stroke="#EEF3EC" stroke-width="1.5" stroke-dasharray="4 4"/>`;
+  ch+=`<text x="${gx+21}" y="${yb+18}" text-anchor="middle" font-size="12" fill="#9DB0A3">${MES[x.m]}</text><text x="${gx+21}" y="${yb+34}" text-anchor="middle" font-size="11" fill="${x.cov?'#C6F24E':'#5F7066'}">${x.cov?Math.round(x.cov/x.days*100)+'%':'—'}</text>`;
+  ch+=`<text x="${gx+21}" y="${yb-Math.max(h(x.est),x.cov?h(x.re):0,h(x.norm))-8}" text-anchor="middle" font-size="11" font-weight="600" fill="#EEF3EC">${Math.round(x.cov?x.re:x.est)}</text>`;});
+ const days=[...Array(30)].map((_,k)=>T-29+k);
+ const dmx=Math.max(...days.map(d=>Math.max(rainEst(f,d),realR(f,d)||0)),10)*1.15;
+ let dc='';days.forEach((d,i)=>{const x=20+i*23,r=realR(f,d),e=rainEst(f,d),h=v=>v/dmx*130;
+  if(r!=null){if(r>0)dc+=`<rect x="${x}" y="${150-h(r)}" width="16" height="${h(r)}" rx="2" fill="#C6F24E"/>`;else dc+=`<rect x="${x}" y="148" width="16" height="2" fill="#C6F24E"/>`;}
+  else{if(e>0)dc+=`<rect x="${x}" y="${150-h(e)}" width="16" height="${h(e)}" rx="2" fill="#35483C"/>`;dc+=`<circle cx="${x+8}" cy="160" r="3.5" fill="none" stroke="#FF8A3D" stroke-width="1.5"/>`;}
+  if(i%5===4||i===29)dc+=`<text x="${x+8}" y="180" text-anchor="middle" font-size="11" fill="#9DB0A3">${i===29?'hoje':fD(d)}</text>`;});
+ const tp=days.map(d=>temps(f,d));const tmn=Math.min(...tp.map(t=>t[0]))-2,tmx=Math.max(...tp.map(t=>t[1]))+2,ty=v=>110-(v-tmn)/(tmx-tmn)*95;
+ const line=k=>tp.map((t,i)=>`${28+i*23},${ty(t[k]).toFixed(1)}`).join(' ');
+ const last=[...Array(10)].map((_,k)=>T-k);
+ return `<div class="view"><div class="head"><div class="col" style="gap:4px"><h1 class="big" style="font-size:34px;margin:0">Clima</h1><p class="k" style="margin:0">Estimado pelo centroide ${nf(f.centroid.lat,4)}; ${nf(f.centroid.lon,4)} · registro do pluviômetro substitui o estimado no dia.</p></div><button type="button" class="btn pri" data-act="rain" data-day="${T}">${ic('plus')} Registrar chuva</button></div>
+ <section class="row"><div class="hero" style="flex:2 1 300px;display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;justify-content:space-between"><div><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:600">Chuva em ${MES[mo]}</div><div class="big" style="font-size:64px;margin-top:6px">${nf(mVal,0)} <span style="font-size:22px">mm</span></div></div><div style="font-size:14px;line-height:1.5">${sg(pct(mVal,mNorm))} da normal até hoje<br>registro em ${mCov} de ${T-ma+1} dias</div></div>
+ <div class="card col tile" style="flex:1 1 180px;justify-content:space-between"><div class="k">Safra (desde 1 out)</div><div class="big" style="font-size:40px">${nf(sVal,0)} <span style="font-size:16px;font-weight:500;color:var(--muted)">mm</span></div><div class="k">${sg(pct(sVal,sNorm))} da normal</div></div>
+ <div class="card col tile" style="flex:1 1 180px;justify-content:space-between"><div class="k">Pluviômetro hoje</div>${today!=null?`<div class="big" style="font-size:40px">${nf(today,1)} <span style="font-size:16px;font-weight:500;color:var(--muted)">mm</span></div><div class="k">registrado</div>`:`<div class="big" style="font-size:30px;color:var(--warn)">sem registro</div><div class="k">estimado: ${nf(rainEst(f,T),1)} mm</div>`}</div>
+ <div class="card col tile" style="flex:1 1 180px;justify-content:space-between"><div class="k">Previsão 7 dias</div><div class="big" style="font-size:40px">${nf(sum(fc.map(d=>rainEst(f,d))),0)} <span style="font-size:16px;font-weight:500;color:var(--muted)">mm</span></div><div class="k">centroide</div></div></section>
+ <div class="row" style="gap:20px;align-items:stretch">
+ <section class="card col" style="flex:999 1 560px" aria-label="Chuva mensal"><div class="head"><h2 class="h2">Chuva por mês, 12 meses</h2><div class="legend"><span><i class="sw" style="background:#C6F24E"></i>Pluviômetro</span><span><i class="sw" style="border:1.5px solid #5DB383"></i>Estimado</span><span><svg width="18" height="4" aria-hidden="true"><line x1="0" x2="18" y1="2" y2="2" stroke="#EEF3EC" stroke-width="1.5" stroke-dasharray="4 4"/></svg>Normal</span></div></div>
+ <svg viewBox="0 0 720 245" role="img" aria-label="Chuva mensal dos últimos 12 meses: ${months.map(x=>MES[x.m]+' '+Math.round(x.cov?x.re:x.est)+' mm').join(', ')}" style="width:100%;height:auto">${ch}<line x1="28" x2="716" y1="${yb}" y2="${yb}" stroke="#35483C"/></svg>
+ <p class="k" style="margin:0">Percentual sob o mês: dias com leitura do pluviômetro. Mês com cobertura baixa subestima a chuva real.</p></section>
+ <section class="card col" style="flex:1 1 300px" aria-label="Previsão"><h2 class="h2">Próximos 7 dias</h2><ul class="list">${fc.map(d=>{const t=temps(f,d),r=rainEst(f,d);return `<li class="li" style="justify-content:space-between"><span style="font-weight:600;white-space:nowrap;flex:1 1 auto">${fDW(d)}</span><span style="color:${r>0?'#C6F24E':'#9DB0A3'};font-weight:600;white-space:nowrap;width:76px;text-align:right">${r>0?nf(r,1)+' mm':'sem chuva'}</span><span class="k" style="padding-right:8px;white-space:nowrap;width:70px;text-align:right">${Math.round(t[0])}° / ${Math.round(t[1])}°</span></li>`;}).join('')}</ul></section></div>
+ <section class="card col" aria-label="Últimos 30 dias"><div class="head"><h2 class="h2">Últimos 30 dias</h2><div class="legend"><span><i class="sw" style="background:#C6F24E"></i>Registrado</span><span><i class="sw" style="background:#35483C"></i>Estimado</span><span><svg width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="3.5" fill="none" stroke="#FF8A3D" stroke-width="1.5"/></svg>Sem registro</span></div></div>
+ <svg viewBox="0 0 720 190" role="img" aria-label="Chuva diária dos últimos 30 dias, com ${days.filter(d=>realR(f,d)==null).length} dias sem registro" style="width:100%;height:auto">${dc}<line x1="16" x2="712" y1="150" y2="150" stroke="#35483C"/></svg>
+ <svg viewBox="0 0 720 120" role="img" aria-label="Temperatura mínima e máxima dos últimos 30 dias" style="width:100%;height:auto"><polyline points="${line(1)}" fill="none" stroke="#FF8A3D" stroke-width="2.5" stroke-linejoin="round"/><polyline points="${line(0)}" fill="none" stroke="#6FA8FF" stroke-width="2.5" stroke-linejoin="round"/><text x="712" y="${ty(tp[29][1])-6}" text-anchor="end" font-size="12" fill="#FF8A3D">máx ${Math.round(tp[29][1])}°</text><text x="712" y="${ty(tp[29][0])+16}" text-anchor="end" font-size="12" fill="#6FA8FF">mín ${Math.round(tp[29][0])}°</text></svg></section>
+ <section class="card col" aria-label="Registros recentes"><h2 class="h2">Registros recentes</h2><div class="scrollx"><table style="min-width:480px"><thead><tr><th>Dia</th><th class="num">Pluviômetro</th><th class="num">Estimado</th><th class="num">Diferença</th><th></th></tr></thead><tbody>
+ ${last.map(d=>{const r=realR(f,d),e=rainEst(f,d);return `<tr><td>${fDW(d)}</td><td class="num" style="font-weight:600;${r==null?'color:var(--warn)':''}">${r==null?'sem registro':nf(r,1)+' mm'}</td><td class="num muted">${nf(e,1)} mm</td><td class="num">${r==null?'—':(r-e>=0?'+':'')+nf(r-e,1)}</td><td class="num"><button type="button" class="btn sm" data-act="rain" data-day="${d}">${r==null?'Registrar':'Editar'}</button></td></tr>`;}).join('')}
+ </tbody></table></div><p class="k" style="margin:0">Dia sem leitura não vira 0 mm. Para dia sem chuva, lance 0.</p></section>
+ <p class="k" style="margin:0">Simulação: os valores estimados são gerados aqui no aparelho. No app real eles vêm de uma API de clima consultada pelo centroide.</p></div>`;
+}
+function ovRain(f){
+ const d=S.ov.day,r=realR(f,d);
+ return `<form class="col" data-act="saveRain"><div class="head"><h2 class="h2">Registrar chuva</h2><button type="button" class="iconbtn" data-act="close" aria-label="Fechar">${ic('x',20)}</button></div>
+ <div class="field"><label for="rn-d">Dia</label><input id="rn-d" name="date" type="date" class="in" value="${iso(d)}" max="${iso(S.today)}"></div>
+ <div class="field"><label for="rn-mm">Pluviômetro (mm)</label><input id="rn-mm" name="mm" type="number" class="in" step="0.1" min="0" inputmode="decimal" value="${r!=null?r:''}" placeholder="0 se não choveu"></div>
+ <p class="k" style="margin:0">Estimado pelo centroide nesse dia: ${nf(rainEst(f,d),1)} mm.</p>
+ ${S.ov.err?`<p class="err" role="alert">${esc(S.ov.err)}</p>`:''}
+ <div class="row" style="gap:10px"><button type="button" class="btn" data-act="close" style="flex:1 1 0">Cancelar</button><button type="submit" class="btn pri" style="flex:1 1 0">Salvar</button></div>
+ ${r!=null?`<button type="button" class="btn warn" data-act="delRain" data-day="${d}">Apagar registro</button>`:''}</form>`;
+}
+function saveRain(fm){
+ const f=F(),fd=new FormData(fm),d=fromIso(fd.get('date')),raw=String(fd.get('mm')).trim().replace(',','.'),mm=parseFloat(raw);
+ const fail=m=>{S.ov=Object.assign({},S.ov,{err:m});renderOv();};
+ if(isNaN(d)||d>S.today)return fail('Escolha um dia até hoje.');
+ if(raw===''||isNaN(mm))return fail('Informe os milímetros. Se não choveu, lance 0.');
+ if(mm<0||mm>400)return fail('Valor fora do esperado.');
+ f.rainReal[d]=r1(mm);S.ov=null;toast(`Chuva de ${fD(d)}: ${nf(mm,1)} mm`);render();
+}
+
+/* ---------- ANÁLISE ---------- */
+function vAnHist(f){
+ const T=S.today,a=T-364,b=T+1,gp=gPads(f),A=gArea(f);
+ const span=T-Math.max(f.created,Math.min(...f.events.map(e=>e.start),T));
+ const closed=f.events.some(e=>e.end!=null);
+ if(span<60||!closed){
+  const left=Math.max(0,60-span);
+  return `<div class="view"><h1 class="big" style="font-size:34px;margin:0">Análise anual</h1><section class="card col" style="max-width:640px"><h2 class="h2">Ainda sem histórico suficiente</h2><p style="margin:0;font-size:15px;line-height:1.5">A lotação global anual sai das movimentações registradas no app. ${closed?'':'Nenhum pastejo foi fechado ainda. '}Com ${span} ${pl(span,'dia','dias')} de registro, a análise abre em ${left||'poucos'} ${pl(left,'dia','dias')} e fica completa com 12 meses.</p><div class="bar" aria-hidden="true"><i style="width:${Math.min(100,span/365*100)}%"></i></div><p class="k" style="margin:0">${span} de 365 dias registrados. Importar histórico de planilha (lote, piquete, entrada, saída, cabeças) adiantaria isso.</p></section></div>`;
+ }
+ const rows=gp.map(p=>Object.assign({p,m:modOfPad(f,p.id)},padYear(f,p,a,b)));
+ rows.forEach(r=>{r.globB=r.glob;r.ocorrB=r.ocorr;r.udB=r.ud;r.glob=r.globP;r.ocorr=r.ocorrP;r.ud=r.udp;});
+ const udT=sum(rows.map(r=>r.ud)),gl=udT/A/365,udTB=sum(rows.map(r=>r.udB)),glB=udTB/A/365,coch=udTB?1-udT/udTB:0;
+ const mstat=f.modules.map(m=>{const rr=rows.filter(r=>r.m&&r.m.id===m.id),ar=sum(rr.map(r=>r.p.area));return{m,rr,glob:ar?sum(rr.map(r=>r.ud))/ar/365:0,area:ar,cyc:rr.length?Math.round(sum(rr.map(r=>r.cyc))/rr.length):0};}).filter(x=>x.rr.length);
+ const av=rows.filter(r=>!r.m);
+ const best=mstat.slice().sort((x,y)=>y.glob-x.glob)[0];
+ let weak=null;rows.forEach(r=>{const ms=r.m&&mstat.find(x=>x.m.id===r.m.id);const ref=ms?ms.glob:gl;const ratio=ref?r.glob/ref:1;if(!weak||ratio<weak.ratio)weak={r,ratio,ref:ms?ms.m.name:'fazenda'};});
+ const months=[];for(let k=11;k>=0;k--){const r=monthRange(k);let ud=0,udb=0;rows.forEach(x=>{const y=padYear(f,x.p,r.a,r.b);ud+=y.udp;udb+=y.ud;});let rain=0;for(let d=r.a;d<r.b;d++)rain+=rainVal(f,d);months.push({m:r.m,v:A?ud/A/(r.b-r.a):0,vb:A?udb/A/(r.b-r.a):0,rain,partial:r.b-r.a<r.full});}
+ const mx=Math.max(...months.map(x=>x.vb),0.1)*1.15,avgM=sum(months.map(x=>x.v))/12;
+ const maxG=Math.max(...rows.map(r=>r.glob),0.1)*1.05;
+ const trow=(r,i,ref)=>`<tr><td class="muted">${i+1}</td><td style="font-weight:600;${weak&&weak.r===r?'color:var(--warn)':''}">${esc(r.p.name)}</td><td>${r.m?esc(r.m.name):'avulso'}</td><td class="num">${nf(r.p.area,1)}</td><td class="num">${r.dias}</td><td class="num">${r.cyc}</td><td class="num">${nf(r.ocorr,2)}</td><td class="num muted">${nf(r.globB,2)}</td>
+  <td style="min-width:220px"><div style="display:flex;align-items:center;gap:12px"><div style="position:relative;flex-grow:1;height:10px;border-radius:5px;background:#223028"><div style="width:${r.glob/maxG*100}%;height:10px;border-radius:5px;background:${weak&&weak.r===r?'#FF8A3D':r.glob>=ref?'#C6F24E':'#5DB383'}"></div><div aria-hidden="true" style="position:absolute;left:${ref/maxG*100}%;top:-4px;width:2px;height:18px;background:#EEF3EC"></div></div><span style="width:40px;text-align:right;font-weight:700">${nf(r.glob,2)}</span></div></td></tr>`;
+ const thead=`<thead><tr><th>#</th><th>Piquete</th><th>Módulo</th><th class="num">ha</th><th class="num">Dias de pastejo</th><th class="num">Ciclos</th><th class="num">Ocorrida de pasto</th><th class="num">Global bruta</th><th>Global anual de pasto (UA/ha)</th></tr></thead>`;
+ let rank;
+ if(S.rank==='mod'){rank=mstat.map(x=>`<div class="col" style="gap:8px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><span style="display:flex;align-items:center;gap:8px;font-weight:600"><i class="sw" style="background:${x.m.color}"></i>${esc(x.m.name)}</span><span class="k">média do módulo ${nf(x.glob,2)}</span></div><div class="scrollx"><table style="min-width:760px">${thead}<tbody>${x.rr.slice().sort((p,q)=>q.glob-p.glob).map((r,i)=>trow(r,i,x.glob)).join('')}</tbody></table></div></div>`).join('')+(av.length?`<div class="col" style="gap:8px"><span style="font-weight:600">Avulsos</span><div class="scrollx"><table style="min-width:760px">${thead}<tbody>${av.sort((p,q)=>q.glob-p.glob).map((r,i)=>trow(r,i,gl)).join('')}</tbody></table></div></div>`:'');}
+ else rank=`<div class="scrollx"><table style="min-width:760px">${thead}<tbody>${rows.slice().sort((p,q)=>q.glob-p.glob).map((r,i)=>trow(r,i,gl)).join('')}</tbody></table></div>`;
+ let ch='';months.forEach((x,i)=>{const gx=26+i*57,h=x.v/mx*150,hc=Math.max(0,(x.vb-x.v)/mx*150),op=x.partial?' fill-opacity="0.6"':'';ch+=`<rect x="${gx}" y="${170-h}" width="40" height="${h}" rx="5" fill="${x.v>=avgM?'#C6F24E':'#5DB383'}"${op}/>`+(hc>0.5?`<rect x="${gx}" y="${170-h-hc}" width="40" height="${hc}" rx="3" fill="#6FA8FF"${op}/>`:'')+`<text x="${gx+20}" y="${164-h-hc}" text-anchor="middle" font-size="12" font-weight="600" fill="#EEF3EC">${nf(x.v,1)}</text><text x="${gx+20}" y="190" text-anchor="middle" font-size="12" fill="#9DB0A3">${MES[x.m]}</text><text x="${gx+20}" y="210" text-anchor="middle" font-size="11" fill="#7F9286">${Math.round(x.rain)} mm</text>`;});
+ return `<div class="view"><div class="head"><div class="col" style="gap:4px"><h1 class="big" style="font-size:34px;margin:0">Análise anual</h1><p class="k" style="margin:0">${fD(a)} ${dt(a).getUTCFullYear()} a ${fDY(T)} · lotação global = UA-dia ÷ área ÷ 365</p></div></div>
+ <section class="row"><div class="hero" style="flex:2 1 300px;display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;justify-content:space-between"><div><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:600">Lotação global anual de pasto</div><div class="big" style="font-size:64px;margin-top:6px">${nf(gl,2)} <span style="font-size:22px">UA/ha</span></div></div><div style="font-size:14px;line-height:1.5">bruta ${nf(glB,2)} UA/ha${coch>0.005?`<br>${Math.round(coch*100)}% sustentado pelo cocho`:''}<br>${nf(udT/1000,1)} mil UA-dia de pasto · ${nf(A,1)} ha</div></div>
+ ${best?`<div class="card col tile" style="flex:1 1 180px;justify-content:space-between"><div class="k">Melhor módulo</div><div class="big" style="font-size:34px">${esc(best.m.name.replace('Módulo ',''))} <span style="font-size:22px">${nf(best.glob,2)}</span></div><div class="k">UA/ha</div></div>`:''}
+ ${weak?`<div class="card col tile" style="flex:1 1 180px;justify-content:space-between"><div class="k">Piquete mais fraco</div><div class="big" style="font-size:34px;color:var(--warn)">${esc(weak.r.p.name)} <span style="font-size:22px">${nf(weak.r.glob,2)}</span></div><div class="k">${Math.round((1-weak.ratio)*100)}% abaixo da média do ${esc(weak.ref)}</div></div>`:''}</section>
+ <div class="row" style="gap:20px;align-items:stretch">
+ <section class="card col" style="flex:999 1 560px" aria-label="Lotação por mês"><div class="head"><h2 class="h2">Lotação global por mês: pasto + cocho</h2><div class="legend"><span><i class="sw" style="background:#C6F24E"></i>Pasto acima da média (${nf(avgM,2)})</span><span><i class="sw" style="background:#5DB383"></i>Abaixo</span><span><i class="sw" style="background:#6FA8FF"></i>Cocho</span><span class="muted">mm de chuva</span></div></div>
+ <svg viewBox="0 0 720 220" role="img" aria-label="Lotação global mensal de pasto e bruta: ${months.map(x=>MES[x.m]+' '+nf(x.v,1)+' de pasto, '+nf(x.vb,1)+' bruta').join('; ')}" style="width:100%;height:auto">${ch}<line x1="20" x2="714" y1="170" y2="170" stroke="#35483C"/></svg>
+ <p class="k" style="margin:0">Com a chuva ao lado de cada mês, este histórico vira a capacidade de suporte por mês do ano seguinte.</p></section>
+ <section class="card col" style="flex:1 1 300px" aria-label="Módulos"><h2 class="h2">Módulos</h2>${mstat.slice().sort((x,y)=>y.glob-x.glob).map(x=>`<div class="col" style="gap:8px;padding-bottom:14px;border-bottom:1px solid var(--line)"><div style="display:flex;justify-content:space-between;align-items:baseline"><span style="display:flex;align-items:center;gap:8px;font-weight:600"><i class="sw" style="background:${x.m.color}"></i>${esc(x.m.name)}</span><span class="big" style="font-size:24px">${nf(x.glob,2)}</span></div><div class="bar" aria-hidden="true"><i style="width:${x.glob/maxG*100}%"></i></div><span class="k" style="font-size:12px">${nf(x.area,0)} ha · ~${x.cyc} ciclos por piquete</span></div>`).join('')||'<p class="k">Nenhum módulo.</p>'}</section></div>
+ <section class="card col" aria-label="Ranking"><div class="head"><h2 class="h2">Ranking dos piquetes</h2><div class="chips" role="group" aria-label="Agrupar ranking"><button type="button" class="chip" data-act="rank" data-v="mod" aria-pressed="${S.rank==='mod'}">Dentro do módulo</button><button type="button" class="chip" data-act="rank" data-v="all" aria-pressed="${S.rank==='all'}">Fazenda toda</button></div></div>
+ ${rank}<p class="k" style="margin:0">Ranking pela lotação de pasto: o suplemento acima de 0,3% do PV é descontado do capim (consumo total de 2,5% do PV). Traço branco: média de referência. Dentro do módulo compara piquetes com o mesmo capim e a mesma categoria; na fazenda toda essas diferenças se misturam.</p></section></div>`;
+}
+
+/* ---------- PROJEÇÃO: P = M × PPR × FH + N × RN (Tonato, Barioni e Pedreira; N de Martha Jr.) ---------- */
+const UA_MS=450*INTAKE/100;
+const COND={ext:{n:'Extensiva',M:40,lo:30,hi:80},adu:{n:'Adubada',M:105,lo:100,hi:180}};
+const SCEN=[['Seco',0.75],['Normal',1],['Chuvoso',1.25]];
+const TOT=30,MTETO=250,NDIAS=60;
+const TB=sp=>/decumbens|humid/i.test(sp||'')?15.5:16.5;
+const PPR=(t,tb)=>t>=TOT?1:Math.max(0,(t-tb)/(TOT-tb));
+const pj=f=>Object.assign({efic:0.5,cad:75,rn:26},f.proj||{});
+function mOff(k){const d=dt(S.today),y=d.getUTCFullYear(),m=d.getUTCMonth()+k;return{a:dayUTC(y,m,1),b:dayUTC(y,m+1,1),m:((m%12)+12)%12,y:new Date(Date.UTC(y,m,1)).getUTCFullYear()};}
+function eto(f,d){const t=temps(f,d),tm=(t[0]+t[1])/2,x=dt(d),J=Math.round((Date.UTC(x.getUTCFullYear(),x.getUTCMonth(),x.getUTCDate())-Date.UTC(x.getUTCFullYear(),0,0))/864e5),phi=f.centroid.lat*Math.PI/180,dr=1+0.033*Math.cos(2*Math.PI*J/365),de=0.409*Math.sin(2*Math.PI*J/365-1.39),ws=Math.acos(Math.max(-1,Math.min(1,-Math.tan(phi)*Math.tan(de)))),Ra=24*60/Math.PI*0.082*dr*(ws*Math.sin(phi)*Math.sin(de)+Math.cos(phi)*Math.cos(de)*Math.sin(ws));return Math.max(0,0.0023*(tm+17.8)*Math.sqrt(Math.max(0,t[1]-t[0]))*Ra*0.408);}
+const kcM=m=>m>=5&&m<=7?0.6:(m===11||m<=1)?1.2:0.9;
+function climSeries(f,fac){const p=pj(f),T=S.today,out={};let s=p.cad/2;
+ for(let k=-24;k<=12;k++){const r=mOff(k),mm=f.centroid.lat<0?r.m:(r.m+6)%12;let etr=0,etm=0,ts=0,rn=0;
+  for(let d=r.a;d<r.b;d++){const rain=d<=T?rainVal(f,d):rainEst(f,d)*fac,em=eto(f,d)*kcM(mm),av=s+rain,er=Math.min(av,em*Math.min(1,av/(0.5*p.cad)));s=Math.min(p.cad,av-er);etr+=er;etm+=em;const t=temps(f,d);ts+=(t[0]+t[1])/2;rn+=rain;}
+  const q=etm?etr/etm:1;out[k]=Object.assign({k,rain:rn,T:ts/(r.b-r.a),ratio:q,FH:q>=0.5?1:2*q,days:r.b-r.a},r);}
+ return out;}
+function projUnits(f){
+ const us=f.modules.map(m=>({id:m.id,name:m.name,color:m.color,pads:m.order.map(id=>pad(f,id)).filter(p=>p&&p.grazing),cond:m.cond||'ext',Mc:m.M}));
+ const av=gPads(f).filter(p=>!modOfPad(f,p.id));if(av.length)us.push({id:'_av',name:'Avulsos',color:'#3A433E',pads:av,cond:(f.proj||{}).avCond||'ext',Mc:(f.proj||{}).avM});
+ us.forEach(u=>{u.area=sum(u.pads.map(p=>p.area));u.tb=u.area?sum(u.pads.map(p=>TB(p.species)*p.area))/u.area:16.5;u.Mref=u.Mc>0?u.Mc:COND[u.cond].M;});
+ return us.filter(u=>u.area>0);}
+function projModel(f){
+ const p=pj(f),T=S.today,cl=SCEN.map(x=>climSeries(f,x[1])),us=projUnits(f),fert=f.fert||[],WS=[1,0.8,0.65,0.5,0.4,0.3,0.25,0.2];
+ us.forEach(u=>{
+  u.cur=sum(f.events.filter(e=>e.end==null&&u.pads.some(q=>q.id===e.pad)).map(uap))/u.area;
+  u.obs={};for(let k=-11;k<=0;k++){const r=mOff(k),b=Math.min(r.b,T+1);if(b-r.a<1)continue;let ud=0;u.pads.forEach(q=>{ud+=padYear(f,q,r.a,b).udp;});u.obs[k]=ud/u.area/(b-r.a);}
+  u.G=[];u.N=[];u.ppr={};
+  for(let s=0;s<3;s++){u.G[s]={};u.N[s]={};for(let k=-24;k<=12;k++){const c=cl[s][k];u.G[s][k]=PPR(c.T,u.tb)*c.FH;let n=0;
+   fert.forEach(x=>{const q=u.pads.find(z=>z.id===x.pad);if(!q)return;const ov=Math.max(0,Math.min(c.b,x.day+NDIAS)-Math.max(c.a,x.day));if(ov>0)n+=x.n*p.rn*c.FH*(ov/NDIAS)*q.area/u.area/c.days;});u.N[s][k]=n;}}
+  for(let k=-11;k<=12;k++)u.ppr[k]=PPR(cl[1][k].T,u.tb);
+  const sm={},smooth=(s,w)=>{const key=s+'_'+w;if(!sm[key]){const o={};let g=u.G[s][-24];for(let k=-24;k<=12;k++){g=w*u.G[s][k]+(1-w)*g;o[k]=g;}sm[key]=o;}return sm[key];},ge=(s,k,w)=>smooth(s,w)[k];
+  const ks=[];for(let k=-11;k<=0;k++){const r=mOff(k);if(u.obs[k]>0&&Math.min(r.b,T+1)-r.a>=10)ks.push(k);}
+  let best=null;
+  if(ks.length>=6)WS.forEach(w=>{let sxy=0,sxx=0;ks.forEach(k=>{const x=ge(1,k,w)*p.efic/UA_MS,y=u.obs[k]-u.N[1][k]*p.efic/UA_MS;sxy+=x*y;sxx+=x*x;});if(!sxx)return;const M=sxy/sxx;if(!(M>0))return;let sse=0;ks.forEach(k=>{const e=(M*ge(1,k,w)+u.N[1][k])*p.efic/UA_MS-u.obs[k];sse+=e*e;});if(!best||sse<best.sse-1e-12)best={M,w,sse};});
+  u.Mcal=best?best.M:null;u.calUsed=!!(best&&S.projM!=='ref');u.M=u.calUsed?best.M:u.Mref;u.w=u.calUsed?best.w:0.4;
+  u.Ge=[];u.P=[];u.cap=[];for(let s=0;s<3;s++){u.Ge[s]={};u.P[s]={};u.cap[s]={};for(let k=-11;k<=12;k++){u.Ge[s][k]=ge(s,k,u.w);u.P[s][k]=u.M*u.Ge[s][k]+u.N[s][k];u.cap[s][k]=u.P[s][k]*p.efic/UA_MS;}}
+  let e=0;ks.forEach(k=>{e+=Math.abs(u.cap[1][k]-u.obs[k])/u.obs[k];});u.err=ks.length?e/ks.length:null;u.nObs=ks.length;
+ });
+ return{us,cl,p};}
+function projScope(mdl,scope){
+ const us=scope==='farm'?mdl.us:mdl.us.filter(u=>u.id===scope),area=sum(us.map(u=>u.area)),w=fn=>area?sum(us.map(u=>fn(u)*u.area))/area:0;
+ const sc={us,area,name:scope==='farm'?'Fazenda':us[0].name,cur:w(u=>u.cur),obs:{},cap:[{},{},{}],ppr:{},mo:mdl.cl[1]};
+ for(let k=-11;k<=12;k++){if(k<=0)sc.obs[k]=w(u=>u.obs[k]||0);sc.ppr[k]=w(u=>u.ppr[k]);for(let s=0;s<3;s++)sc.cap[s][k]=w(u=>u.cap[s][k]);}
+ return sc;}
+function nPlan(mdl,scope,meta){
+ const p=mdl.p,us=scope==='farm'?mdl.us:mdl.us.filter(u=>u.id===scope),rows=[];
+ for(let k=0;k<=11;k++){const c=mdl.cl[1][k];let kgN=0,defUA=0,teto=false,area=0,cap=0;
+  us.forEach(u=>{const need=meta*UA_MS/p.efic,def=Math.max(0,need-u.P[1][k]);area+=u.area;cap+=u.cap[1][k]*u.area;if(def<=0)return;
+   if(need>MTETO*u.Ge[1][k]+u.N[1][k])teto=true;
+   if(c.FH<0.5){defUA+=(meta-u.cap[1][k])*u.area;return;}
+   kgN+=def*c.days/(p.rn*c.FH)*u.area;});
+  rows.push({k,c,kgN,nha:area?kgN/area:0,defUA,teto,block:c.FH<0.5,cap:area?cap/area:0});}
+ return rows;}
+function projChart(sc){
+ const W=720,x0=34,cw=(W-x0-6)/24,yb=200,ks=[];for(let k=-11;k<=12;k++)ks.push(k);
+ const mx=Math.max(0.5,sc.cur,...ks.map(k=>Math.max(sc.obs[k]||0,sc.cap[2][k],sc.cap[1][k])))*1.15,Y=v=>yb-v/mx*170,X=k=>x0+(k+11)*cw+cw/2,st=mx>3?1:0.5;
+ let s='';
+ for(let g=0;g<=mx;g+=st)s+=`<line x1="${x0}" x2="${W-6}" y1="${Y(g)}" y2="${Y(g)}" stroke="#223028"/><text x="${x0-6}" y="${Y(g)+4}" text-anchor="end" font-size="11" fill="#7F9286">${nf(g,1)}</text>`;
+ ks.filter(k=>k<=0&&sc.obs[k]>0).forEach(k=>{const h=sc.obs[k]/mx*170;s+=`<rect x="${X(k)-cw*0.36}" y="${yb-h}" width="${cw*0.72}" height="${h}" rx="3" fill="#C6F24E"${k===0?' fill-opacity="0.55"':''}/>`;});
+ const fut=ks.filter(k=>k>=0);
+ s+=`<polygon points="${fut.map(k=>X(k)+','+Y(sc.cap[2][k]).toFixed(1)).join(' ')} ${fut.slice().reverse().map(k=>X(k)+','+Y(sc.cap[0][k]).toFixed(1)).join(' ')}" fill="#6FA8FF" fill-opacity="0.25"/>`;
+ s+=`<polyline points="${ks.map(k=>X(k).toFixed(1)+','+Y(sc.cap[1][k]).toFixed(1)).join(' ')}" fill="none" stroke="#6FA8FF" stroke-width="2.5" stroke-linejoin="round"/>`;
+ s+=`<line x1="${X(0)}" x2="${X(12)}" y1="${Y(sc.cur)}" y2="${Y(sc.cur)}" stroke="#FF8A3D" stroke-width="2" stroke-dasharray="6 5"/>`;
+ s+=`<line x1="${X(0)+cw/2}" x2="${X(0)+cw/2}" y1="14" y2="${yb}" stroke="#EEF3EC" stroke-opacity="0.4"/><text x="${X(0)+cw/2+5}" y="22" font-size="11" fill="#9DB0A3">projeção</text><text x="${X(0)+cw/2-5}" y="22" text-anchor="end" font-size="11" fill="#9DB0A3">ocorrido</text>`;
+ ks.forEach(k=>{s+=`<text x="${X(k)}" y="${yb+16}" text-anchor="middle" font-size="10" fill="${k===0?'#EEF3EC':'#9DB0A3'}"${k===0?' font-weight="700"':''}>${MES[sc.mo[k].m]}</text>`;if(sc.mo[k].m===0||k===-11)s+=`<text x="${X(k)}" y="${yb+31}" text-anchor="middle" font-size="10" fill="#7F9286">${sc.mo[k].y}</text>`;});
+ return `<svg viewBox="0 0 ${W} 238" role="img" aria-label="Lotação de pasto ocorrida nos últimos 12 meses e capacidade projetada para os próximos 12: ${fut.map(k=>MES[sc.mo[k].m]+' '+nf(sc.cap[1][k],2)).join(', ')} UA por hectare no cenário normal. Lotação atual ${nf(sc.cur,2)}." style="width:100%;height:auto">${s}</svg>`;}
+function vProj(f){
+ let mdl;try{mdl=projModel(f);}catch(e){return `<section class="card"><p class="err">Não foi possível calcular a projeção: ${esc(e.message)}</p></section>`;}
+ if(!mdl.us.length)return `<section class="card"><p class="k" style="margin:0">Cadastre piquetes de pastejo para projetar.</p></section>`;
+ if(S.projScope!=='farm'&&!mdl.us.some(u=>u.id===S.projScope))S.projScope='farm';
+ const sc=projScope(mdl,S.projScope),p=mdl.p,c0=sc.cap[1][0],over=c0?sc.cur/c0-1:0;
+ let first=null,worst=0;for(let k=0;k<=12;k++){if(first==null&&sc.cur>sc.cap[1][k]*1.02)first=k;if(sc.cap[1][k]<sc.cap[1][worst])worst=k;}
+ const exc=Math.max(0,(sc.cur-sc.cap[1][worst])*sc.area);
+ const meta=S.projMeta!=null?S.projMeta:Math.round(sc.cur*100)/100,plan=nPlan(mdl,S.projScope,meta),totN=sum(plan.map(r=>r.kgN));
+ const ferts=(f.fert||[]).filter(x=>sc.us.some(u=>u.pads.some(q=>q.id===x.pad))).sort((a,b)=>b.day-a.day);
+ const eu=sc.us.filter(u=>u.err!=null),err=eu.length?sum(eu.map(u=>u.err*u.area))/sum(eu.map(u=>u.area)):null;
+ const anyCal=mdl.us.some(u=>u.Mcal),mLab=k=>MES[sc.mo[k].m]+(sc.mo[k].y!==sc.mo[0].y?'/'+String(sc.mo[k].y).slice(2):'');
+ const chips=`<div class="chips" role="group" aria-label="Escopo"><button type="button" class="chip" data-act="pscope" data-id="farm" aria-pressed="${S.projScope==='farm'}">Fazenda</button>${mdl.us.map(u=>`<button type="button" class="chip" data-act="pscope" data-id="${u.id}" aria-pressed="${S.projScope===u.id}">${esc(u.name)}</button>`).join('')}</div>`;
+ return `<div class="view">
+ <div class="head"><div class="col" style="gap:4px"><h1 class="big" style="font-size:34px;margin:0">Projeção</h1><p class="k" style="margin:0">Lotação de pasto sustentável: P = M × PPR × FH + N × RN, convertida em UA/ha.</p></div></div>
+ ${chips}
+ <section class="row"><div class="hero" style="flex:2 1 300px;display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;justify-content:space-between"><div><div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:600">Sustentável em ${MES[sc.mo[0].m]} · ${esc(sc.name)}</div><div class="big" style="font-size:64px;margin-top:6px">${nf(c0,2)} <span style="font-size:22px">UA/ha</span></div></div><div style="font-size:14px;line-height:1.5">${sc.cap[2][0]-sc.cap[0][0]>0.015?`de ${nf(sc.cap[0][0],2)} (seco) a ${nf(sc.cap[2][0],2)} (chuvoso)<br>`:''}lotação de pasto hoje: <b>${nf(sc.cur,2)} UA/ha</b></div></div>
+ <div class="card col tile" style="flex:1 1 180px;justify-content:space-between"><div class="k">Situação hoje</div><div class="big" style="font-size:34px;color:${over>0.02?'#FF8A3D':'#C6F24E'}">${over>0.02?Math.round(over*100)+'% acima':over<-0.02?Math.round(-over*100)+'% de folga':'no limite'}</div><div class="k">cenário normal</div></div>
+ <div class="card col tile" style="flex:1 1 180px;justify-content:space-between"><div class="k">Passa do limite em</div><div class="big" style="font-size:34px;color:${first!=null?'#FF8A3D':'#EEF3EC'}">${first==null?'—':first===0?'agora':mLab(first)}</div><div class="k">${first==null?'cabe nos 12 meses':'mantendo a lotação atual'}</div></div>
+ <div class="card col tile" style="flex:1 1 180px;justify-content:space-between"><div class="k">Pior mês</div><div class="big" style="font-size:34px">${mLab(worst)} <span style="font-size:20px">${nf(sc.cap[1][worst],2)}</span></div><div class="k">${exc>0.5?nf(exc,0)+' UA a mais que o pasto sustenta':'lotação atual cabe'}</div></div></section>
+ ${first!=null?`<div class="alert"><span><b>Mantida a lotação de hoje, o pasto não sustenta a partir de ${first===0?'agora':mLab(first)}.</b> No pior mês (${mLab(worst)}) sobram ${nf(exc,0)} UA: vender, suplementar, diferir ou adubar.</span></div>`:''}
+ <section class="card col" aria-label="Gráfico da projeção"><div class="head"><h2 class="h2">Ocorrido e projetado</h2><div class="legend"><span><i class="sw" style="background:#C6F24E"></i>Lotação de pasto ocorrida</span><span><svg width="18" height="4" aria-hidden="true"><line x1="0" x2="18" y1="2" y2="2" stroke="#6FA8FF" stroke-width="2.5"/></svg>Modelo (normal)</span><span><i class="sw" style="background:#6FA8FF;opacity:.35"></i>Seco a chuvoso</span><span><svg width="18" height="4" aria-hidden="true"><line x1="0" x2="18" y1="2" y2="2" stroke="#FF8A3D" stroke-width="2" stroke-dasharray="5 4"/></svg>Lotação de hoje</span></div></div>
+ ${projChart(sc)}
+ <p class="k" style="margin:0">${err!=null?`Erro médio do modelo nos meses ocorridos: ${Math.round(err*100)}%. `:'Sem histórico suficiente para calibrar: o M é o de referência. '}A linha do modelo sobre as barras mostra o quanto ele acerta o passado desta fazenda.</p></section>
+ <section class="card col" aria-label="Meses"><h2 class="h2">Mês a mês</h2><div class="scrollx"><table style="min-width:680px"><thead><tr><th>Mês</th><th class="num">Chuva</th><th class="num">T média</th><th class="num">PPR</th><th class="num">ETR/ETM</th><th class="num">FH</th><th class="num">Seco</th><th class="num">Normal</th><th class="num">Chuvoso</th><th class="num">Saldo</th></tr></thead><tbody>
+ ${[...Array(13)].map((_,k)=>{const c=sc.mo[k];let sd=sc.cap[1][k]-sc.cur;if(Math.abs(sd)<0.005)sd=0;return `<tr><td style="font-weight:600">${mLab(k)}</td><td class="num">${Math.round(c.rain)} mm</td><td class="num">${nf(c.T,1)}°</td><td class="num">${nf(sc.ppr[k],2)}</td><td class="num">${nf(c.ratio,2)}</td><td class="num">${nf(c.FH,2)}</td><td class="num muted">${nf(sc.cap[0][k],2)}</td><td class="num" style="font-weight:700">${nf(sc.cap[1][k],2)}</td><td class="num muted">${nf(sc.cap[2][k],2)}</td><td class="num" style="font-weight:600;color:${sd<-0.005?'#FF8A3D':'#C6F24E'}">${sd>=0?'+':''}${nf(sd,2)}</td></tr>`;}).join('')}
+ </tbody></table></div><p class="k" style="margin:0">Capacidade em UA/ha de pasto. Saldo = capacidade normal − lotação de pasto de hoje. Clima do cenário normal.</p></section>
+ <div class="row" style="gap:20px;align-items:flex-start">
+ <section class="card col" style="flex:1 1 420px" aria-label="Dose de nitrogênio"><h2 class="h2">Meta de lotação → dose de N</h2>
+ <div class="field" style="max-width:260px"><label for="pj-meta">Meta de lotação de pasto (UA/ha) · ${esc(sc.name)}</label><input id="pj-meta" class="in" type="number" step="0.05" min="0" value="${meta}" data-chg="pmeta"></div>
+ <div class="scrollx"><table style="min-width:460px"><thead><tr><th>Mês</th><th class="num">Sustenta</th><th class="num">Falta</th><th class="num">N (kg/ha)</th><th>Observação</th></tr></thead><tbody>
+ ${plan.map(r=>{const falta=Math.max(0,meta-r.cap);return `<tr><td style="font-weight:600">${mLab(r.k)}</td><td class="num">${nf(r.cap,2)}</td><td class="num" style="${falta>0.005?'color:#FF8A3D;font-weight:600':''}">${falta>0.005?nf(falta,2):'—'}</td><td class="num" style="font-weight:700">${r.kgN>0?nf(r.nha,0):'—'}</td><td class="k">${falta<=0.005?'':r.block?`déficit hídrico: N não responde · ${nf(r.defUA,0)} UA por outra via`:r.teto?'meta acima do potencial do capim':''}</td></tr>`;}).join('')}
+ </tbody></table></div>
+ <div class="stat3"><div><div class="big" style="font-size:24px;color:var(--lime)">${nf(totN/1000,1)} t</div><div class="k" style="font-size:12px">N em 12 meses</div></div><div><div class="big" style="font-size:24px">${nf(sc.area?totN/sc.area:0,0)}</div><div class="k" style="font-size:12px">kg N/ha no ano</div></div><div><div class="big" style="font-size:24px">${nf(totN/0.45/1000,1)} t</div><div class="k" style="font-size:12px">em ureia (45% N)</div></div></div>
+ <p class="k" style="margin:0">Conta inversa: produção que a meta exige (meta × ${nf(UA_MS,2)} kg MS ÷ ${Math.round(p.efic*100)}% de eficiência) menos o que o pasto dá sem adubo, dividido pela resposta ao N (${nf(p.rn,0)} kg MS/kg N × FH). Com ETR/ETM abaixo de 0,5 a dose não é calculada.</p></section>
+ <section class="card col" style="flex:1 1 340px" aria-label="Parâmetros"><div class="head"><h2 class="h2">Parâmetros</h2>${anyCal?`<div class="chips" role="group" aria-label="M usado"><button type="button" class="chip" data-act="pM" data-v="cal" aria-pressed="${S.projM!=='ref'}">M calibrado</button><button type="button" class="chip" data-act="pM" data-v="ref" aria-pressed="${S.projM==='ref'}">M de referência</button></div>`:''}</div>
+ ${mdl.us.map(u=>{const cd=COND[u.cond],fora=u.Mcal&&(u.Mcal<cd.lo||u.Mcal>cd.hi);return `<div class="col" style="gap:8px;padding-bottom:14px;border-bottom:1px solid var(--line)"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span style="display:flex;align-items:center;gap:8px;font-weight:600"><i class="sw" style="background:${u.color}"></i>${esc(u.name)}</span><span class="k">${nf(u.area,0)} ha · Tb ${nf(u.tb,1)}°</span></div>
+  <div class="row" style="gap:10px"><div class="field" style="flex:2 1 130px"><label for="uc-${u.id}">Condição</label><select id="uc-${u.id}" class="in" data-chg="ucond" data-id="${u.id}"><option value="ext"${u.cond==='ext'?' selected':''}>Extensiva (M 40)</option><option value="adu"${u.cond==='adu'?' selected':''}>Adubada (M 105)</option></select></div><div class="field" style="flex:1 1 90px"><label for="um-${u.id}">M de referência</label><input id="um-${u.id}" class="in" type="number" min="1" max="400" value="${Math.round(u.Mref)}" data-chg="uM" data-id="${u.id}"></div></div>
+  <span style="font-size:13px">${u.Mcal?`M calibrado no histórico: <b>${nf(u.Mcal,0)}</b> kg MS/ha/dia (${u.nObs} meses, erro ${Math.round(u.err*100)}%) · peso do mês corrente ${Math.round(u.w*100)}%, o resto vem dos meses anteriores`:`<span class="muted">Sem 6 meses de histórico: usando o M de referência.</span>`}</span>
+  ${fora?`<span style="font-size:13px;color:var(--warn)">M calibrado ${u.Mcal<cd.lo?'abaixo':'acima'} da faixa de ${cd.n.toLowerCase()} (${cd.lo} a ${cd.hi}). ${u.Mcal<cd.lo?'O pasto rende menos que o esperado, ou foi lotado abaixo do que aguentava.':'Rende mais que o esperado, ou foi lotado acima do sustentável.'}</span>`:''}</div>`;}).join('')}
+ <div class="row" style="gap:10px"><div class="field" style="flex:1 1 90px"><label for="pj-ef">Eficiência de pastejo (%)</label><input id="pj-ef" class="in" type="number" min="10" max="90" value="${Math.round(p.efic*100)}" data-chg="pjparam" data-k="efic"></div><div class="field" style="flex:1 1 90px"><label for="pj-cad">Água do solo, CAD (mm)</label><input id="pj-cad" class="in" type="number" min="20" max="250" value="${p.cad}" data-chg="pjparam" data-k="cad"></div><div class="field" style="flex:1 1 90px"><label for="pj-rn">Resposta ao N (kg MS/kg)</label><input id="pj-rn" class="in" type="number" min="5" max="83" value="${p.rn}" data-chg="pjparam" data-k="rn"></div></div>
+ <p class="k" style="margin:0">Tótima ${TOT} °C · Kc 0,6 / 0,9 / 1,2 · consumo ${nf(INTAKE,1)}% do PV · teto de potencial M ${MTETO}.</p></section></div>
+ <section class="card col" aria-label="Adubações"><div class="head"><h2 class="h2">Adubações nitrogenadas</h2><button type="button" class="btn pri sm" data-act="fert">${ic('plus')} Registrar adubação</button></div>
+ ${ferts.length?`<ul class="list">${ferts.map(x=>{const q=pad(f,x.pad);return `<li class="li"><span class="k" style="width:84px;flex:none">${fDY(x.day)}</span><span class="grow"><span style="font-weight:600">${esc(q?q.name:'?')}</span> · ${nf(x.n,0)} kg N/ha${q?` · ${nf(x.n*q.area,0)} kg N`:''}</span><button type="button" class="${S.fertDel===x.id?'btn warn sm':'iconbtn'}" data-act="delFert" data-id="${x.id}" aria-label="Excluir adubação de ${fD(x.day)}">${S.fertDel===x.id?'Excluir?':ic('trash')}</button></li>`;}).join('')}</ul>`:'<p class="k" style="margin:0">Nenhuma adubação registrada neste escopo.</p>'}
+ <p class="k" style="margin:0">A resposta ao N entra distribuída nos ${NDIAS} dias seguintes à aplicação e é reduzida pelo fator hídrico do mês.</p></section>
+ <p class="k" style="margin:0">Simulação: clima e ETo (Hargreaves) são gerados no aparelho, e os cenários seco e chuvoso usam 75% e 125% da chuva. No app real viriam do centroide e do histórico de chuva do local. A lotação ocorrida reflete o que foi colocado no pasto, não necessariamente o limite dele.</p></div>`;
+}
+function ovFert(f){
+ const o=S.ov,T=S.today,ps=gPads(f);
+ return `<form class="col" data-act="doFert"><div class="head"><h2 class="h2">Adubação nitrogenada</h2><button type="button" class="iconbtn" data-act="close" aria-label="Fechar">${ic('x',20)}</button></div>
+ <div class="field"><label for="ft-p">Piquete</label><select id="ft-p" name="pad" class="in">${ps.map(q=>`<option value="${q.id}"${q.id===o.pad?' selected':''}>${esc(q.name)} · ${nf(q.area,1)} ha${modOfPad(f,q.id)?' · '+esc(modOfPad(f,q.id).name):''}</option>`).join('')}</select></div>
+ <div class="field"><label for="ft-d">Data da aplicação</label><input id="ft-d" name="date" type="date" class="in" value="${iso(T)}" max="${iso(T)}"></div>
+ <div class="field"><label for="ft-n">Dose (kg de N por hectare)</label><input id="ft-n" name="n" type="number" class="in" min="1" max="300" step="1" inputmode="decimal" placeholder="ex.: 50"><span class="k">50 kg de N = 111 kg de ureia por hectare.</span></div>
+ ${o.err?`<p class="err" role="alert">${esc(o.err)}</p>`:''}
+ <div class="row" style="gap:10px"><button type="button" class="btn" data-act="close" style="flex:1 1 0">Cancelar</button><button type="submit" class="btn pri" style="flex:1 1 0">Salvar</button></div></form>`;
+}
+function doFert(fm){
+ const f=F(),fd=new FormData(fm),pid=fd.get('pad'),d=fromIso(fd.get('date')),n=parseFloat(String(fd.get('n')).replace(',','.'));
+ const fail=m=>{S.ov=Object.assign({},S.ov,{pad:pid,err:m});renderOv();};
+ if(!pad(f,pid))return fail('Escolha o piquete.');
+ if(isNaN(d)||d>S.today)return fail('Escolha uma data até hoje.');
+ if(!(n>0))return fail('Informe a dose em kg de N por hectare.');
+ if(n>300)return fail('Dose acima de 300 kg N/ha numa aplicação: confira o valor.');
+ (f.fert=f.fert||[]).push({id:uid('a'),pad:pid,day:d,n:r1(n)});
+ S.ov=null;toast(`${pad(f,pid).name}: ${nf(n,0)} kg N/ha em ${fD(d)}`);render();
+}
+function vAn(f){
+ const pv=S.anView==='proj';
+ return `<div class="view"><div class="chips" role="group" aria-label="Análise"><button type="button" class="chip" data-act="anView" data-v="hist" aria-pressed="${!pv}">Histórico</button><button type="button" class="chip" data-act="anView" data-v="proj" aria-pressed="${pv}">Projeção</button></div>${pv?vProj(f):vAnHist(f)}</div>`;
+}
+
+/* ---------- FAZENDAS ---------- */
+function ovFarms(){
+ return `<div class="head"><h2 class="h2">Fazendas</h2><button type="button" class="iconbtn" data-act="close" aria-label="Fechar">${ic('x',20)}</button></div>
+ <ul class="list">${S.farms.map(f=>`<li><button type="button" class="li" data-act="setFarm" data-id="${f.id}" style="width:100%;border:1px solid ${f.id===S.active?'#C6F24E':'transparent'};cursor:pointer;text-align:left;color:inherit"><span class="grow"><span style="display:block;font-weight:600">${esc(f.name)}</span><span class="k">${esc(f.city||'')} · ${gPads(f).length} piquetes · ${nf(gArea(f),0)} ha</span></span></button></li>`).join('')}</ul>
+ <button type="button" class="btn pri" data-act="wizStart">${ic('plus')} Abrir nova fazenda</button>
+ <button type="button" class="btn warn" data-act="reset">${S.ov.confirm?'Toque de novo para apagar tudo':'Restaurar simulação de exemplo'}</button>`;
+}
+
+/* ---------- ABERTURA DE FAZENDA ---------- */
+function exampleKML(){
+ const lat0=-14.8612,lon0=-40.839,M=4,kx=1/(111320*Math.cos(lat0*Math.PI/180)),ky=1/110540;
+ const ll=([x,y])=>[(lon0+(x-400)*M*kx).toFixed(6),(lat0-(y-260)*M*ky).toFixed(6)];
+ const ring=pts=>pts.concat([pts[0]]).map(q=>ll(q).join(',')+',0').join(' ');
+ const poly=(n,p)=>`<Placemark><name>${n}</name><Polygon><outerBoundaryIs><LinearRing><coordinates>${ring(p)}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>`;
+ let pm=EX.map((p,i)=>poly('Pasto '+String(i+1).padStart(2,'0'),p)).join('');
+ pm+=poly('Reserva legal',[[760,70],[870,95],[880,340],[750,360],[775,210]]);
+ pm+=EX_WATER.map((w,i)=>`<Placemark><name>Bebedouro ${i+1}</name><Point><coordinates>${ll(w).join(',')},0</coordinates></Point></Placemark>`).join('');
+ return `<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Fazenda Nova</name>${pm}</Document></kml>`;
+}
+function parseKML(text){
+ const doc=new DOMParser().parseFromString(text,'application/xml');
+ if(doc.getElementsByTagName('parsererror').length)throw new Error('Arquivo KML inválido.');
+ const coords=s=>s.trim().split(/\s+/).map(t=>t.split(',').map(Number)).filter(c=>c.length>=2&&!isNaN(c[0])&&!isNaN(c[1])).map(c=>[c[0],c[1]]);
+ const polys=[],points=[];
+ for(const pm of Array.from(doc.getElementsByTagName('Placemark'))){
+  const nm=pm.getElementsByTagName('name')[0];const name=nm?nm.textContent.trim():'';
+  const pgs=Array.from(pm.getElementsByTagName('Polygon'));
+  pgs.forEach((pg,k)=>{const ob=pg.getElementsByTagName('outerBoundaryIs')[0]||pg;const c=ob.getElementsByTagName('coordinates')[0];if(!c)return;const ll=coords(c.textContent);if(ll.length>=3)polys.push({name:pgs.length>1?name+' ('+(k+1)+')':name,ll});});
+  if(!pgs.length){const pt=pm.getElementsByTagName('Point')[0];if(pt){const c=pt.getElementsByTagName('coordinates')[0];if(c){const ll=coords(c.textContent);if(ll.length)points.push({name,ll:ll[0]});}}}
+ }
+ if(!polys.length)throw new Error('Nenhum polígono encontrado no arquivo.');
+ const all=polys.flatMap(p=>p.ll),lat0=sum(all.map(c=>c[1]))/all.length,lonMin=Math.min(...all.map(c=>c[0])),latMax=Math.max(...all.map(c=>c[1]));
+ const kx=111320*Math.cos(lat0*Math.PI/180),ky=110540;
+ const X=lo=>(lo-lonMin)*kx,Y=la=>(latMax-la)*ky;
+ const pads=polys.map((p,i)=>{let pts=p.ll.map(([lo,la])=>[r1(X(lo)),r1(Y(la))]);const a=pts[0],z=pts[pts.length-1];if(pts.length>3&&Math.abs(a[0]-z[0])<0.01&&Math.abs(a[1]-z[1])<0.01)pts.pop();
+  return{id:'p'+(i+1),name:p.name||('Polígono '+(i+1)),pts,area:r1(polyArea(pts)/1e4),grazing:!NONG.test(p.name||'')};});
+ return{pads,waters:points.map(p=>[r1(X(p.ll[0])),r1(Y(p.ll[1]))]),geo:{lonMin,latMax,kx,ky}};
+}
+function wizCentroid(k){let A=0,cx=0,cy=0;k.pads.filter(p=>p.grazing).forEach(p=>{const a=polyArea(p.pts),[x,y]=polyCent(p.pts);A+=a;cx+=x*a;cy+=y*a;});if(!A)return null;cx/=A;cy/=A;return{lat:k.geo.latMax-cy/k.geo.ky,lon:k.geo.lonMin+cx/k.geo.kx};}
+function wizFarm(){const w=S.wiz,k=w.kml;return{paddocks:k?k.pads.map(p=>Object.assign({},p,{species:w.species[p.id]||''})):[],waters:k?k.waters:[],modules:w.modules,lots:w.lots,events:[]};}
+const WSTEPS=['Fazenda','Mapa','Capim','Módulos','Lotes','Situação de hoje'];
+function vWiz(){
+ const w=S.wiz,T=S.today,k=w.kml,ff=wizFarm();
+ let body='';
+ if(w.step===1)body=`<section class="card col" style="max-width:560px"><h2 class="h2">Dados da fazenda</h2>
+  <div class="field"><label for="w-name">Nome</label><input id="w-name" class="in" type="text" value="${esc(w.name)}" data-bind="wiz.name" placeholder="Nome da fazenda"></div>
+  <div class="field"><label for="w-city">Município / UF</label><input id="w-city" class="in" type="text" value="${esc(w.city)}" data-bind="wiz.city" placeholder="Itambé, BA"></div>
+  <div class="field"><label for="w-own">Responsável</label><input id="w-own" class="in" type="text" value="${esc(w.owner)}" data-bind="wiz.owner"></div>
+  <p class="k" style="margin:0">A área sai do mapa no próximo passo; ninguém digita.</p></section>`;
+ if(w.step===2){const g=k?k.pads.filter(p=>p.grazing):[];const c=k?wizCentroid(k):null;
+  body=`<section class="card col"><div class="head"><h2 class="h2">Mapa dos piquetes</h2><div class="row" style="gap:10px"><label class="btn" style="cursor:pointer">${ic('file')} Importar KML ou KMZ<input type="file" accept=".kml,.kmz" data-chg="kmlfile" style="position:absolute;width:1px;height:1px;opacity:0"></label><button type="button" class="btn" data-act="kmlex">Usar KML de exemplo</button></div></div>
+  ${w.kmlErr?`<p class="err" role="alert">${esc(w.kmlErr)}</p>`:''}
+  ${k?`<div class="row"><div class="col" style="flex:999 1 480px;min-width:0">${mapSVG(ff,p=>p.grazing?{fill:'#2F6B4A',ink:'#EEF3EC',l1:p.name,l2:nf(p.area,1),l3:'ha',aria:p.name+', pastejo, toque para marcar como fora'}:{fill:'#18231C',ink:'#9DB0A3',l1:p.name,l3:'fora do pastejo',aria:p.name+', fora do pastejo, toque para incluir'},{label:'Polígonos importados'})}<p class="k" style="margin:0">Toque num polígono para marcar ou desmarcar como área de pastejo. Pontos do arquivo viram bebedouros.</p></div>
+  <div class="col" style="flex:1 1 300px"><div class="stat3"><div><div class="big" style="font-size:24px">${k.pads.length}</div><div class="k" style="font-size:12px">polígonos</div></div><div><div class="big" style="font-size:24px;color:var(--lime)">${nf(sum(g.map(p=>p.area)),1)}</div><div class="k" style="font-size:12px">ha úteis</div></div><div><div class="big" style="font-size:24px">${k.waters.length}</div><div class="k" style="font-size:12px">bebedouros</div></div></div>
+  ${c?`<div class="alert info"><span><b>Centroide ${nf(c.lat,4)}; ${nf(c.lon,4)}</b><br>É por este ponto que o clima é buscado.</span></div>`:''}
+  <ul class="list">${k.pads.map(p=>`<li class="li"><label class="chk grow"><input type="checkbox" data-chg="wgraz" data-id="${p.id}"${p.grazing?' checked':''}><span><span style="display:block;font-weight:600">${esc(p.name)}</span><span class="k">${nf(p.area,1)} ha · ${p.grazing?'pastejo':'fora do pastejo'}</span></span></label></li>`).join('')}</ul></div></div>`:'<p class="k" style="margin:0">Importe o KML ou KMZ da fazenda. Cada polígono vira um piquete com o nome do arquivo.</p>'}</section>`;}
+ if(w.step===3){const g=k.pads.filter(p=>p.grazing),miss=g.filter(p=>!w.species[p.id]).length;
+  body=`<section class="card col"><div class="head"><h2 class="h2">Capim de cada piquete</h2><span class="k">${miss?miss+' sem capim':'todos com capim'}</span></div>
+  <div class="row"><div class="col" style="flex:999 1 480px;min-width:0">${mapSVG(ff,p=>{if(!p.grazing)return{fill:'#18231C',ink:'#7F9286',l1:p.name,l3:'fora',aria:p.name};const s=w.sel.includes(p.id);return{fill:s?'#C6F24E':w.species[p.id]?'#2F6B4A':'#3A433E',ink:s?'#0B120E':'#EEF3EC',l1:p.name,l3:w.species[p.id]||'—',aria:`${p.name}, ${w.species[p.id]||'sem capim'}${s?', selecionado':''}`};},{label:'Selecionar piquetes'})}</div>
+  <div class="col" style="flex:1 1 300px"><p class="k" style="margin:0">${w.sel.length?`${w.sel.length} selecionado(s). Escolha o capim:`:'Toque nos piquetes do mapa e escolha o capim.'}</p>
+  <div class="chips">${SPECIES.map(s=>`<button type="button" class="chip" data-act="wsp" data-sp="${s}"${w.sel.length?'':' disabled'}>${s}</button>`).join('')}</div>
+  <button type="button" class="btn sm" data-act="wselmiss">Selecionar os que estão sem capim</button></div></div></section>`;}
+ if(w.step===4){const free=k.pads.filter(p=>p.grazing&&!w.modules.some(m=>m.order.includes(p.id)));
+  body=`<section class="card col"><div class="head"><h2 class="h2">Módulos</h2><span class="k">opcional · dá para montar depois</span></div>
+  <div class="row"><div class="col" style="flex:999 1 480px;min-width:0">${mapSVG(ff,p=>{if(!p.grazing)return{fill:'#18231C',ink:'#7F9286',l1:p.name,l3:'fora',aria:p.name};const i=w.sel.indexOf(p.id);if(i>=0)return{fill:'#C6F24E',ink:'#0B120E',badge:i+1,l1:p.name,l3:nf(p.area,1)+' ha',aria:p.name+', posição '+(i+1)};const m=w.modules.find(x=>x.order.includes(p.id));return m?{fill:m.color,op:0.75,ink:'#EEF3EC',l1:p.name,l3:m.name,aria:p.name+', '+m.name}:{fill:'#26342B',ink:'#EEF3EC',l1:p.name,l3:'avulso',aria:p.name+', avulso'};},{label:'Montar módulos'})}</div>
+  <div class="col" style="flex:1 1 300px"><p class="k" style="margin:0">Toque nos piquetes na ordem da rotação.</p><button type="button" class="btn pri" data-act="wmod"${w.sel.length?'':' disabled'}>${ic('plus')} Criar módulo com ${w.sel.length} ${pl(w.sel.length,'piquete','piquetes')}</button>
+  <ul class="list">${w.modules.map((m,i)=>`<li class="li"><i class="sw" style="background:${m.color}"></i><span class="grow"><span style="display:block;font-weight:600">${esc(m.name)}</span><span class="k">${m.order.map(id=>esc(k.pads.find(p=>p.id===id).name)).join(' · ')}</span></span><button type="button" class="iconbtn" data-act="wmodrem" data-i="${i}" aria-label="Remover ${esc(m.name)}">${ic('trash')}</button></li>`).join('')}</ul>
+  <p class="k" style="margin:0">Avulsos: ${free.length}</p></div></div></section>`;}
+ if(w.step===5)body=`<section class="card col" style="max-width:760px"><h2 class="h2">Lotes</h2>
+  <form class="row" style="gap:12px;align-items:flex-end" data-act="wlot"><div class="field" style="flex:2 1 160px"><label for="wl-n">Nome</label><input id="wl-n" name="name" class="in" type="text" placeholder="Lote ${w.lots.length+1}"></div>
+  <div class="field" style="flex:2 1 150px"><label for="wl-c">Categoria</label><select id="wl-c" name="cat" class="in" data-chg="wcat">${CATS.map(c=>`<option>${c[0]}</option>`).join('')}</select></div>
+  <div class="field" style="flex:1 1 100px"><label for="wl-h">Cabeças</label><input id="wl-h" name="heads" class="in" type="number" min="1"></div>
+  <div class="field" style="flex:1 1 110px"><label for="wl-w">Peso padrão</label><input id="wl-w" name="weight" class="in" type="number" min="1" value="${CATS[0][1]}"></div>
+  <button type="submit" class="btn pri" style="flex:1 1 120px">${ic('plus')} Adicionar</button></form>
+  ${w.err?`<p class="err" role="alert">${esc(w.err)}</p>`:''}
+  <ul class="list">${w.lots.map((l,i)=>`<li class="li"><span class="grow"><span style="display:block;font-weight:600">${esc(l.name)} · ${esc(l.cat)}</span><span class="k">${l.heads} cab. × ${l.weight} kg</span></span><span class="big" style="font-size:22px">${nf(uaLot(l),1)} <span style="font-size:12px">UA</span></span><button type="button" class="iconbtn" data-act="wlotrem" data-i="${i}" aria-label="Remover ${esc(l.name)}">${ic('trash')}</button></li>`).join('')||'<li class="k">Nenhum lote ainda.</li>'}</ul></section>`;
+ if(w.step===6){const g=k.pads.filter(p=>p.grazing),used=new Set(Object.values(w.sit.lots).map(x=>x.pad).filter(Boolean));
+  body=`<section class="row" style="align-items:flex-start;gap:20px"><div class="card col" style="flex:1 1 380px"><h2 class="h2">Onde está cada lote hoje</h2>
+  ${w.lots.map(l=>{const s=w.sit.lots[l.id]||{};return `<div class="row" style="gap:10px;align-items:flex-end;padding-bottom:12px;border-bottom:1px solid var(--line)"><div class="field" style="flex:2 1 160px"><label for="ws-p-${l.id}">${esc(l.name)}</label><select id="ws-p-${l.id}" class="in" data-chg="wsitpad" data-id="${l.id}"><option value="">Fora do pasto</option>${g.map(p=>`<option value="${p.id}"${s.pad===p.id?' selected':''}>${esc(p.name)}</option>`).join('')}</select></div><div class="field" style="flex:1 1 150px"><label for="ws-d-${l.id}">Entrou em</label><input id="ws-d-${l.id}" class="in" type="date" max="${iso(T)}" value="${iso(s.date!=null?s.date:T)}" data-chg="wsitdate" data-id="${l.id}"${s.pad?'':' disabled'}></div></div>`;}).join('')}</div>
+  <div class="card col" style="flex:1 1 380px"><h2 class="h2">Última saída dos piquetes vazios</h2><p class="k" style="margin:0">Se não souber, marque "não sei". O descanso fica em cinza até a primeira saída registrada; uma data inventada distorce a lotação global.</p>
+  ${g.filter(p=>!used.has(p.id)).map(p=>{const s=w.sit.pads[p.id]||{unk:true};return `<div class="row" style="gap:10px;align-items:center;padding-bottom:10px;border-bottom:1px solid var(--line)"><span style="flex:1 1 90px;font-weight:600">${esc(p.name)}</span><input class="in" style="flex:1 1 150px;width:auto" type="date" aria-label="Última saída de ${esc(p.name)}" max="${iso(T)}" value="${s.date!=null?iso(s.date):''}" data-chg="wpdate" data-id="${p.id}"${s.unk?' disabled':''}><label class="chk"><input type="checkbox" data-chg="wpunk" data-id="${p.id}"${s.unk?' checked':''}>não sei</label></div>`;}).join('')}
+  ${w.err?`<p class="err" role="alert">${esc(w.err)}</p>`:''}</div></section>`;}
+ const canNext=w.step===1?!!w.name.trim():w.step===2?!!(k&&k.pads.some(p=>p.grazing)):w.step===5?w.lots.length>0:true;
+ return `<div class="wizin"><div class="head"><div class="col" style="gap:4px"><span class="eyebrow">Abrir nova fazenda · passo ${w.step} de 6</span><h1 class="big" style="font-size:32px;margin:0">${WSTEPS[w.step-1]}</h1></div><button type="button" class="btn" data-act="wizClose">Sair sem salvar</button></div>
+ <div class="steps" aria-hidden="true">${WSTEPS.map((_,i)=>`<i class="${i<w.step?'on':''}"></i>`).join('')}</div>
+ ${body}
+ <div class="row" style="justify-content:space-between;gap:10px"><button type="button" class="btn" data-act="wizBack"${w.step===1?' disabled':''}>Voltar</button>
+ <button type="button" class="btn pri" data-act="wizNext"${canNext?'':' disabled'}>${w.step===6?'Concluir e abrir o dashboard':w.step===4&&!w.modules.length?'Pular por agora':'Continuar'}</button></div></div>`;
+}
+function wizFinish(){
+ const w=S.wiz,T=S.today,k=w.kml;
+ for(const l of w.lots){const s=w.sit.lots[l.id];if(s&&s.pad&&!(s.date<=T)){w.err='Data de entrada inválida para '+l.name+'.';return renderOv();}}
+ const used=new Set(Object.values(w.sit.lots).map(x=>x.pad).filter(Boolean));
+ const c=wizCentroid(k);
+ const f={id:uid('f'),name:w.name.trim(),city:w.city.trim(),seed:Math.round(Math.abs(c.lat*1e4)+Math.abs(c.lon*1e4)),rainMul:1,centroid:c,created:T,
+  paddocks:k.pads.map(p=>{const s=w.sit.pads[p.id];return{id:p.id,name:p.name,pts:p.pts,area:p.area,species:w.species[p.id]||'',grazing:p.grazing,lastExit:(!used.has(p.id)&&s&&!s.unk&&s.date!=null&&s.date<=T)?s.date:null};}),
+  waters:k.waters,seq:0,stays:[],lots:w.lots.map(l=>({id:l.id,name:l.name,cat:l.cat})),modules:w.modules.map(m=>Object.assign({},m,{history:[{from:T,order:m.order.slice()}]})),events:[],rainReal:{}};
+ f.lots.forEach(l=>{const src=w.lots.find(x=>x.id===l.id),s=w.sit.lots[l.id],d0=s&&s.pad&&s.date!=null?Math.min(s.date,T):T;l.log=[{id:uid('g'),seq:++f.seq,day:d0,type:'inicio',heads:src.heads,weight:src.weight,cat:src.cat,note:'Lote cadastrado na abertura'}];});
+ for(const l of f.lots){const s=w.sit.lots[l.id];if(s&&s.pad){f.stays.push({id:uid('s'),lot:l.id,pad:s.pad,start:s.date!=null?Math.min(s.date,T):T,end:null});const m=f.modules.find(x=>x.order.includes(s.pad));if(m&&!m.lotId)m.lotId=l.id;}}
+ derive(f);
+ S.farms.push(f);S.active=f.id;S.wiz=null;S.view='painel';S.filter=null;S.draft=null;location.hash='painel';toast(f.name+' aberta');render();
+}
+
+/* ---------- overlays e render ---------- */
+function renderOv(){
+ const ov=document.getElementById('ov'),f=F();
+ const prevFocus=document.activeElement&&ov.contains(document.activeElement)?document.activeElement.id:null;
+ if(S.wiz){ov.innerHTML=`<div class="wiz" role="dialog" aria-modal="true" aria-label="Abrir nova fazenda">${vWiz()}</div>`;}
+ else if(!S.ov)ov.innerHTML='';
+ else if(S.ov.type==='pad'){const p=pad(f,S.ov.id);if(!p){S.ov=null;ov.innerHTML='';return;}ov.innerHTML=`<div class="scrim" data-act="close"></div><section class="sheet" role="dialog" aria-modal="true" aria-label="Piquete ${esc(p.name)}">${ovPad(f,p)}${p.grazing?`<button type="button" class="btn" data-act="fert" data-pad="${p.id}">Registrar adubação (N)</button>`:''}</section>`;}
+ else if(S.ov.type==='lot'){const l=lotOf(f,S.ov.id);if(!l){S.ov=null;ov.innerHTML='';return;}ov.innerHTML=`<div class="scrim" data-act="close"></div><section class="sheet" role="dialog" aria-modal="true" aria-label="Lote ${esc(l.name)}">${ovLot(f,l)}</section>`;}
+ else{const t=S.ov.type;const inner=t==='move'?ovMove(f):t==='rain'?ovRain(f):t==='weigh'?ovWeigh(f):t==='alter'?ovAlter(f):t==='supl'?ovSupl(f):t==='fert'?ovFert(f):ovFarms();const lab={move:'Registrar movimentação',rain:'Registrar chuva',weigh:'Registrar pesagem',alter:'Alterar lote',supl:'Suplemento',fert:'Adubação nitrogenada'}[t]||'Fazendas';ov.innerHTML=`<div class="scrim" data-act="close"></div><section class="modal" role="dialog" aria-modal="true" aria-label="${lab}">${inner}</section>`;}
+ if(S.wiz||S.ov){const el=(prevFocus&&document.getElementById(prevFocus))||ov.querySelector('[role=alert]')||ov.querySelector('input:not([type=hidden]):not([disabled]),select,button');if(el&&!S._noFocus)try{el.focus({preventScroll:true});}catch(e){}}
+ S._noFocus=false;
+}
+function render(){
+ renderTop();
+ const f=F(),v=S.view;
+ document.getElementById('main').innerHTML=v==='modulos'?vMod(f):v==='mapa'?vMapa(f):v==='rebanho'?vReb(f):v==='clima'?vClima(f):v==='analise'?vAn(f):vPainel(f);
+ renderOv();save();
+}
+
+/* ---------- ações ---------- */
+function act(a,el){
+ const f=F(),d=el.dataset;
+ switch(a){
+ case'close':S.ov=null;renderOv();break;
+ case'farms':S.ov={type:'farms'};renderOv();break;
+ case'setFarm':S.active=d.id;S.ov=null;S.filter=null;S.draft=null;S.projScope='farm';S.projMeta=null;render();break;
+ case'reset':if(!S.ov.confirm){S.ov.confirm=true;renderOv();break;}S=fresh();location.hash='mapa';toast('Simulação restaurada');render();break;
+ case'adv':S.today+=+d.n;toast(`Hoje: ${fDW(S.today)}`);render();break;
+ case'filter':S.filter=d.id&&S.filter!==d.id?d.id:null;render();break;
+ case'pad':
+  if(S.wiz)return wizPad(d.id);
+  if(S.view==='modulos'){const p=pad(f,d.id);if(!p||!p.grazing)return;if(S.draft){const i=S.draft.order.indexOf(d.id);if(i>=0)S.draft.order.splice(i,1);else S.draft.order.push(d.id);S.draft.err=null;}else{const m=modOfPad(f,d.id);startDraft(f,m?m.id:null,m?null:d.id);}render();return;}
+  S.ov={type:'pad',id:d.id};renderOv();break;
+ case'move':S.ov={type:'move',lot:d.lot||null,dest:d.dest||null};renderOv();break;
+ case'doMove':doMove(el);break;
+ case'rain':S.ov={type:'rain',day:d.day!=null?+d.day:S.today};renderOv();break;
+ case'saveRain':saveRain(el);break;
+ case'delRain':delete f.rainReal[+d.day];S.ov=null;toast('Registro apagado');render();break;
+ case'editMod':startDraft(f,d.id);render();break;
+ case'newMod':startDraft(f,null);render();break;
+ case'cancelMod':S.draft=null;render();break;
+ case'saveMod':saveMod();break;
+ case'delMod':if(!S.draft.confirmDel){S.draft.confirmDel=true;render();break;}f.modules=f.modules.filter(m=>m.id!==S.draft.id);S.draft=null;toast('Módulo excluído; piquetes ficaram avulsos');render();break;
+ case'dmv':{const o=S.draft.order,i=+d.i,j=i+(+d.d);if(j<0||j>=o.length)break;[o[i],o[j]]=[o[j],o[i]];render();break;}
+ case'drem':S.draft.order.splice(+d.i,1);render();break;
+ case'lot':S.ov={type:'lot',id:d.id};renderOv();break;
+ case'supl':S.ov={type:'supl',lot:d.lot};renderOv();break;
+ case'doSupl':doSupl(el);break;
+ case'lotAll':S.ov.all=true;S._noFocus=true;renderOv();break;
+ case'delLog':if(S.ov.confirm!==d.id){S.ov.confirm=d.id;S._noFocus=true;renderOv();break;}delLog(d.lot,d.id);break;
+ case'weigh':S.ov={type:'weigh',lot:d.lot};renderOv();break;
+ case'doWeigh':doWeigh(el);break;
+ case'alter':S.ov={type:'alter',lot:d.lot,kind:'saida'};renderOv();break;
+ case'altKind':S.ov=Object.assign({},S.ov,{kind:d.v,err:null});renderOv();break;
+ case'doAlter':doAlter(el);break;
+ case'goMod':startDraft(f,d.id);location.hash='modulos';break;
+ case'addLot':addLot(el);break;
+ case'rank':S.rank=d.v;render();break;
+ case'anView':S.anView=d.v;render();break;
+ case'goProj':S.anView='proj';S.projScope='farm';S.projMeta=null;if(location.hash==='#analise')render();else location.hash='analise';break;
+ case'pscope':S.projScope=d.id;S.projMeta=null;render();break;
+ case'pM':S.projM=d.v;render();break;
+ case'fert':S.ov={type:'fert',pad:d.pad||null};renderOv();break;
+ case'doFert':doFert(el);break;
+ case'delFert':if(S.fertDel!==d.id){S.fertDel=d.id;render();break;}f.fert=(f.fert||[]).filter(x=>x.id!==d.id);S.fertDel=null;toast('Adubação excluída');render();break;
+ case'wizStart':S.ov=null;S.wiz={step:1,name:'',city:'',owner:'',kml:null,kmlErr:null,species:{},sel:[],modules:[],lots:[],sit:{lots:{},pads:{}},err:null};renderOv();break;
+ case'wizClose':S.wiz=null;renderOv();break;
+ case'wizBack':S.wiz.step=Math.max(1,S.wiz.step-1);S.wiz.sel=[];S.wiz.err=null;renderOv();break;
+ case'wizNext':if(S.wiz.step===6)return wizFinish();S.wiz.step++;S.wiz.sel=[];S.wiz.err=null;renderOv();break;
+ case'kmlex':try{S.wiz.kml=parseKML(exampleKML());S.wiz.kmlErr=null;if(!S.wiz.name)S.wiz.name='Fazenda Nova';}catch(e){S.wiz.kmlErr=e.message;}resetWizDeps();renderOv();break;
+ case'wsp':S.wiz.sel.forEach(id=>S.wiz.species[id]=d.sp);S.wiz.sel=[];renderOv();break;
+ case'wselmiss':S.wiz.sel=S.wiz.kml.pads.filter(p=>p.grazing&&!S.wiz.species[p.id]).map(p=>p.id);renderOv();break;
+ case'wmod':{const w=S.wiz,L='ABCDEFGHIJKLMNOP';w.modules.forEach(m=>m.order=m.order.filter(id=>!w.sel.includes(id)));w.modules=w.modules.filter(m=>m.order.length);const used=new Set(w.modules.map(m=>m.name));let i=0;while(used.has('Módulo '+L[i]))i++;const uc=new Set(w.modules.map(m=>m.color));w.modules.push({id:uid('m'),name:'Módulo '+L[i],color:MOD_COLORS.find(c=>!uc.has(c))||MOD_COLORS[0],order:w.sel.slice(),lotId:null,occ:5});w.sel=[];renderOv();break;}
+ case'wmodrem':S.wiz.modules.splice(+d.i,1);renderOv();break;
+ case'wlot':{const fd=new FormData(el),h=parseInt(fd.get('heads'),10),wt=parseFloat(fd.get('weight'));if(!(h>0)||!(wt>0)){S.wiz.err='Informe cabeças e peso.';S._noFocus=true;return renderOv();}S.wiz.err=null;S.wiz.lots.push({id:uid('l'),name:String(fd.get('name')||'').trim()||'Lote '+(S.wiz.lots.length+1),cat:fd.get('cat'),heads:h,weight:wt});renderOv();setTimeout(()=>{const n=document.getElementById('wl-n');if(n)n.focus();},0);break;}
+ case'wlotrem':{const l=S.wiz.lots.splice(+d.i,1)[0];if(l)delete S.wiz.sit.lots[l.id];renderOv();break;}
+ }
+}
+function resetWizDeps(){const w=S.wiz;w.species={};w.sel=[];w.modules=[];w.sit={lots:{},pads:{}};}
+function wizPad(id){
+ const w=S.wiz,p=w.kml&&w.kml.pads.find(x=>x.id===id);if(!p)return;
+ if(w.step===2){p.grazing=!p.grazing;w.modules.forEach(m=>m.order=m.order.filter(x=>x!==id));}
+ else if(w.step===3||w.step===4){if(!p.grazing)return;const i=w.sel.indexOf(id);if(i>=0)w.sel.splice(i,1);else w.sel.push(id);}
+ else return;
+ S._noFocus=true;renderOv();
+}
+function onChange(el){
+ const c=el.dataset.chg,f=F(),w=S.wiz;
+ switch(c){
+ case'altTo':S.ov=Object.assign({},S.ov,{to:el.value});renderOv();break;
+ case'pmeta':{const v=parseFloat(String(el.value).replace(',','.'));S.projMeta=v>=0?v:null;render();break;}
+ case'pjparam':{const v=parseFloat(el.value),k=el.dataset.k;f.proj=Object.assign({},f.proj||{});if(k==='efic'&&v>=10&&v<=90)f.proj.efic=v/100;if(k==='cad'&&v>=20&&v<=250)f.proj.cad=v;if(k==='rn'&&v>=5&&v<=83)f.proj.rn=v;render();break;}
+ case'ucond':{const id=el.dataset.id;if(id==='_av'){f.proj=Object.assign({},f.proj||{},{avCond:el.value,avM:null});}else{const m=f.modules.find(x=>x.id===id);if(m){m.cond=el.value;m.M=null;}}render();break;}
+ case'uM':{const id=el.dataset.id,v=parseFloat(el.value);if(!(v>0&&v<=400)){render();break;}if(id==='_av'){f.proj=Object.assign({},f.proj||{},{avM:v});}else{const m=f.modules.find(x=>x.id===id);if(m)m.M=v;}render();break;}
+ case'mvlot':S.ov={type:'move',lot:el.value,dest:null};renderOv();break;
+ case'dlot':S.draft.lotId=el.value;render();break;
+ case'docc':S.draft.occ=Math.max(1,parseInt(el.value,10)||1);render();break;
+ case'dvig':{const v=fromIso(el.value);if(!isNaN(v))S.draft.vig=Math.min(v,S.today);break;}
+ case'nlcat':{const wEl=document.getElementById('nl-w');if(wEl)wEl.value=catW(el.value);break;}
+ case'wcat':{const wEl=document.getElementById('wl-w');if(wEl)wEl.value=catW(el.value);break;}
+ case'kmlfile':{const file=el.files&&el.files[0];if(!file)break;readKmlFile(file).then(t=>{w.kml=parseKML(t);w.kmlErr=null;if(!w.name)w.name=file.name.replace(/\.(kml|kmz)$/i,'');resetWizDeps();renderOv();}).catch(e=>{w.kmlErr=e.message||'Não foi possível ler o arquivo.';renderOv();});break;}
+ case'wgraz':{const p=w.kml.pads.find(x=>x.id===el.dataset.id);p.grazing=el.checked;w.modules.forEach(m=>m.order=m.order.filter(x=>x!==p.id));S._noFocus=true;renderOv();break;}
+ case'wsitpad':{const s=w.sit.lots[el.dataset.id]=w.sit.lots[el.dataset.id]||{};s.pad=el.value||null;if(s.date==null)s.date=S.today;renderOv();break;}
+ case'wsitdate':{const s=w.sit.lots[el.dataset.id]=w.sit.lots[el.dataset.id]||{};const v=fromIso(el.value);s.date=isNaN(v)?S.today:Math.min(v,S.today);break;}
+ case'wpdate':{const s=w.sit.pads[el.dataset.id]=w.sit.pads[el.dataset.id]||{unk:true};const v=fromIso(el.value);s.date=isNaN(v)?null:Math.min(v,S.today);s.unk=s.date==null;break;}
+ case'wpunk':{const s=w.sit.pads[el.dataset.id]=w.sit.pads[el.dataset.id]||{};s.unk=el.checked;if(!s.unk&&s.date==null)s.date=S.today-14;renderOv();break;}
+ }
+}
+function readKmlFile(file){
+ if(/\.kmz$/i.test(file.name)){
+  if(typeof JSZip==='undefined')return Promise.reject(new Error('Leitor de KMZ não carregou. Tente um arquivo KML.'));
+  return JSZip.loadAsync(file).then(z=>{const n=Object.keys(z.files).find(x=>/\.kml$/i.test(x));if(!n)throw new Error('O KMZ não tem KML dentro.');return z.files[n].async('string');});
+ }
+ return file.text();
+}
+document.addEventListener('click',ev=>{const t=ev.target.closest('[data-act]');if(!t||t.tagName==='FORM')return;if(t.disabled)return;act(t.dataset.act,t);});
+document.addEventListener('submit',ev=>{ev.preventDefault();const t=ev.target;if(t.dataset.act)act(t.dataset.act,t);});
+document.addEventListener('change',ev=>{const t=ev.target;if(t.dataset&&t.dataset.chg)onChange(t);});
+document.addEventListener('input',ev=>{const t=ev.target,b=t.dataset&&t.dataset.bind;if(!b)return;const[o,k]=b.split('.');if(o==='draft'&&S.draft)S.draft[k]=t.value;if(o==='supl'&&S.ov&&S.ov.type==='supl'){S.ov.pct=t.value;const pv=document.getElementById('sp-prev');if(pv)pv.innerHTML=suplPrev(lotOf(F(),S.ov.lot),t.value);}if(o==='wiz'&&S.wiz){S.wiz[k]=t.value;const nb=document.querySelector('[data-act=wizNext]');if(nb&&S.wiz.step===1)nb.disabled=!t.value.trim()&&k==='name'?true:!S.wiz.name.trim();}});
+document.addEventListener('keydown',ev=>{
+ if(ev.key==='Escape'){if(S.wiz)return;if(S.ov){S.ov=null;renderOv();}return;}
+ if((ev.key==='Enter'||ev.key===' ')&&ev.target.getAttribute&&ev.target.getAttribute('role')==='button'&&ev.target.tagName!=='BUTTON'&&ev.target.dataset&&ev.target.dataset.act){ev.preventDefault();act(ev.target.dataset.act,ev.target);}
+});
+function route(){const h=location.hash.slice(1);if(TABS.some(t=>t[0]===h)||h==='modulos'){if(S.view!==h){S.view=h;if(h!=='modulos')S.draft=null;}}render();window.scrollTo(0,0);}
+window.addEventListener('hashchange',route);
+let lastMob=window.innerWidth<700,rzT;window.addEventListener('resize',()=>{clearTimeout(rzT);rzT=setTimeout(()=>{const m=window.innerWidth<700;if(m!==lastMob){lastMob=m;S._noFocus=true;render();}},200);});
+S=load();
+route();
+</script>
+</body>
+</html>

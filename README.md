@@ -23,6 +23,7 @@ O service worker só existe no build. Para testar instalação e uso sem sinal, 
 - `src/lib/lazyScreen.tsx`: tela sob demanda com limite de 8 s e "tentar de novo".
 - `src/lib/geo.ts`: área em hectares e centroide a partir de lat/lon (elipsoide WGS84).
 - `src/lib/kml/`: leitor de KML e KMZ. `readKml(bytes)` devolve piquetes, bebedouros, centroide e o que foi ignorado. Ainda sem tela.
+- `src/lib/lots/`: núcleo do lote, em TypeScript puro. `deriveLot` recalcula cabeças, peso, estadias e onde o lote está a partir do histórico; `planMove` monta saída e entrada de uma mudança de piquete; `planRemoval` apaga de forma suave. Ainda sem tela e sem banco.
 - `tailwind.config.js`: paleta e fontes do simulador.
 - `reference/`: protótipo original (`simulador/app.html`), testes de fluxo e capturas. Só consulta; não entra no build.
 

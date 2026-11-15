@@ -21,9 +21,11 @@ O service worker só existe no build. Para testar instalação e uso sem sinal, 
 - `src/components/Shell.tsx`: cabeçalho, navegação (embaixo no celular, no topo no desktop) e indicador de sinal.
 - `src/pages/`: as cinco áreas. Painel, Mapa, Rebanho e Clima vão no pacote principal; Análise é carregada sob demanda.
 - `src/lib/lazyScreen.tsx`: tela sob demanda com limite de 8 s e "tentar de novo".
+- `src/lib/geo.ts`: área em hectares e centroide a partir de lat/lon (elipsoide WGS84).
+- `src/lib/kml/`: leitor de KML e KMZ. `readKml(bytes)` devolve piquetes, bebedouros, centroide e o que foi ignorado. Ainda sem tela.
 - `tailwind.config.js`: paleta e fontes do simulador.
 - `reference/`: protótipo original (`simulador/app.html`), testes de fluxo e capturas. Só consulta; não entra no build.
 
 ## Estado
 
-Etapa 1, entrega 1 (esqueleto do PWA). Ainda sem banco, sem login e sem dados: as telas mostram estado vazio.
+Etapa 1. Feito: esqueleto do PWA (entrega 1) e a biblioteca de importação de KML/KMZ (parte da entrega 4), testada só com o KML de exemplo do simulador e arquivos montados à mão, não com arquivo real de cliente. Ainda sem banco, sem login e sem dados: as telas mostram estado vazio.

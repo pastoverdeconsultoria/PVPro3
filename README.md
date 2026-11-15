@@ -21,6 +21,7 @@ O service worker só existe no build. Para testar instalação e uso sem sinal, 
 - `src/components/Shell.tsx`: cabeçalho, navegação (embaixo no celular, no topo no desktop) e indicador de sinal.
 - `src/pages/`: as cinco áreas. Painel, Mapa, Rebanho e Clima vão no pacote principal; Análise é carregada sob demanda.
 - `src/lib/lazyScreen.tsx`: tela sob demanda com limite de 8 s e "tentar de novo".
+- `src/lib/lots/`: núcleo do lote, em TypeScript puro. `deriveLot` recalcula cabeças, peso, estadias e onde o lote está a partir do histórico; `planMove` monta saída e entrada de uma mudança de piquete; `planRemoval` apaga de forma suave. Ainda sem tela e sem banco.
 - `tailwind.config.js`: paleta e fontes do simulador.
 - `reference/`: protótipo original (`simulador/app.html`), testes de fluxo e capturas. Só consulta; não entra no build.
 

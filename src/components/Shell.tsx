@@ -75,7 +75,7 @@ export function Shell() {
                   <span className="relative">
                     <Icon name={t.icon} />
                     {t.to === '/' && newReports ? (
-                      <span className="absolute -right-2.5 -top-1.5 min-w-[16px] rounded-full bg-warn px-1 text-center text-[10px] font-bold leading-4 text-ink" aria-label={`${newReports} ${newReports === 1 ? 'relato novo' : 'relatos novos'} no caderno`}>
+                      <span className="absolute -right-2.5 -top-1.5 min-w-[16px] desk:-left-3 desk:right-auto rounded-full bg-warn px-1 text-center text-[10px] font-bold leading-4 text-ink" aria-label={`${newReports} ${newReports === 1 ? 'relato novo' : 'relatos novos'} no caderno`}>
                         {newReports}
                       </span>
                     ) : null}

@@ -34,6 +34,7 @@ O service worker só existe no build. Para testar instalação e uso sem sinal, 
 - `src/data/`: acesso aos dados. `supabaseRepo.ts` fala com o Supabase (limite de 8 s, leitura paginada); `memoryRepo.ts` é a versão em memória usada nos testes de tela; `rows.ts` traduz linha do banco para tipo do app; `cache.ts` guarda a cópia local para abrir sem sinal.
 - `src/state/`: estado do app (conta, fazenda aberta, gravações). Toda gravação é conferida antes de ir ao servidor.
 - `src/lib/lots/`: núcleo do lote, em TypeScript puro. `deriveLot` recalcula cabeças, peso, estadias e onde o lote está a partir do histórico; `planMove` monta saída e entrada de uma mudança; `gmd.ts` é a única conta de GMD do app.
+- `src/lib/calc/`: o cálculo de lotação. `supplement.ts` é a regra do suplemento (um arquivo só, para trocar de regra); `occupancy.ts` corta as estadias em trechos, soma UA-dia e monta os períodos de pastejo do piquete; `analysis.ts` dá a lotação no período, por piquete e por mês.
 - `src/lib/farm/`: situação de hoje da fazenda (ocupação, descanso, lotação instantânea e global), módulos e abertura de fazenda.
 - `src/lib/kml/` e `src/lib/geo.ts`: leitor de KML e KMZ, área em hectares pelo elipsoide WGS84 e centroide.
 - `src/lib/notebook/queue.ts`: fila do caderno no aparelho do vaqueiro. Guarda o relato antes de tentar enviar, envia na ordem e não duplica.
@@ -55,4 +56,6 @@ Etapa 1 escrita: login, lista de fazendas, abertura por KML/KMZ, mapa, módulos,
 
 Etapa 2 escrita: caderno da equipe. O consultor manda o link da fazenda; o vaqueiro anota chuva e mudança de gado sem login, e o relato fica guardado no aparelho até haver sinal. O consultor vê o aviso no Painel, confere o que vai ser gravado, corrige, lança ou descarta. A tela de Clima mostra a chuva real registrada.
 
-Fora destas etapas: lotação ocorrida e global do ciclo, suplemento no cálculo e projeção (etapa 3), chuva e temperatura estimadas pelo centroide (etapa 4). No app do consultor, sem sinal ele abre e mostra a última cópia, mas não grava: a fila offline existe só no caderno do vaqueiro.
+Etapa 3 escrita, menos a projeção: lotação ocorrida e global do ciclo no cartão do piquete, UA de pasto com o desconto do suplemento, e a tela de Análise com a lotação no período, por mês, por módulo e o ranking dos piquetes.
+
+Fora destas etapas: projeção de capacidade de suporte e dose de N, chuva e temperatura estimadas pelo centroide (etapa 4). No app do consultor, sem sinal ele abre e mostra a última cópia, mas não grava: a fila offline existe só no caderno do vaqueiro.

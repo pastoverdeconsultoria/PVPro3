@@ -36,6 +36,10 @@ Ao tocar no piquete (mapa) mostrar só: ocupado ou não e as últimas informaç�
 
 Estadia contínua do mesmo lote no mesmo piquete é um período de pastejo só (função `lastOcc` agrupa estadias coladas). A UA média ponderada por dia dá a ocorrida (`o.ud / área / dias`).
 
+**Período de pastejo é do piquete, não do lote** (decidido em 16 nov 2026 pelo Claude, por delegação do Lucas: "faça como preferir"). Enquanto houver gado no piquete é um período só: se um lote sai e outro entra no mesmo dia, o período continua; dois lotes juntos somam as UA; só um dia inteiro vazio encerra. O simulador fazia por lote e subestimava a ocorrida com dois lotes. Implementado em `src/lib/calc/occupancy.ts` (`paddockPeriods`). O Lucas pode rever.
+
+Convenção de dias: o dia pertence ao piquete onde o lote termina o dia. Entrou em 1/11 e saiu em 13/11 são 12 dias de pastejo. Para quem ainda está no piquete, hoje conta. A global do ciclo divide pelos dias desde o início do último pastejo até hoje, inclusive.
+
 Pergunta subjetiva na saída do piquete (rapado, no ponto, sobrou): **fora por agora**, upgrade futuro.
 
 ## Modelo de dados: log de eventos, estado derivado
@@ -72,7 +76,7 @@ Princípio central, herdado do que o simulador acertou e do que o PV Pro errou v
 - `cutF(sp) = max(0, min(sp, 2,5) − 0,3) / 2,5` é a fração de capim substituída. `pastoF = 1 − cutF`.
 - UA de pasto = UA × pastoF. A lotação de pasto ocorrida usa UA de pasto (`uap`).
 - **Na tela não mostrar o percentual de redução de capim.** O Lucas achou confuso ("28% de capim"). Mostrar kg/cab/dia de suplemento e UA de pasto.
-- **Ponto aberto:** a regra original dele era "1% de suplemento diminui 40% do consumo de capim". Com limiar de 0,3% o simulador dá cerca de 28% a 1% do PV. A diferença entre 28% e 40% não foi decidida. Perguntar antes de mexer.
+- **Ponto aberto:** a regra original dele era "1% de suplemento diminui 40% do consumo de capim". Com limiar de 0,3% o simulador dá cerca de 28% a 1% do PV. Em 16 nov 2026 o Lucas delegou a escolha ("faça como preferir") e o Claude ficou com o limiar de 0,3% (28% a 1% do PV). A regra está isolada em `src/lib/calc/supplement.ts`; para a regra dos 40% basta pôr `thresholdPct: 0`. O Lucas pode rever.
 
 ## Clima
 
@@ -142,7 +146,7 @@ Escuro com verde-limão. Variáveis do simulador: fundo `#0B120E`, card `#121C16
 
 ## Pendências e riscos conhecidos
 
-1. Regra do suplemento (28% × 40% a 1% do PV). Aberta.
+1. ~~Regra do suplemento (28% × 40% a 1% do PV).~~ Escolhido o limiar de 0,3% por delegação; o Lucas pode rever.
 2. Consumo de 2,5% do PV fixo para todas as categorias. Aberto.
 3. Cenários de chuva da projeção são simulados. Trocar por histórico real.
 4. Nada foi testado com fazenda real. Falta um cliente com 60 a 90 dias de movimentação e o KML dele.
@@ -223,6 +227,16 @@ Em 16 nov 2026 o Lucas confirmou que a etapa 1 funciona no ar (login, abertura d
 - Não conferido no Supabase real: as funções do link público e o lançamento de relato. Só no Postgres local (PGlite) e no banco em memória dos testes.
 - Decidido na implementação, sem perguntar ao Lucas, e pode ser revisto: o relato chega ao banco por função com conferência de token (o anônimo não tem permissão em tabela nenhuma), em vez de política de inserção; a chuva é uma tabela própria com várias leituras por dia, que se somam, e ao lançar num dia que já tem leitura o consultor escolhe somar ou substituir; o link pode ser trocado, e o antigo para de valer; o fuso para "hoje" no servidor é America/Bahia; relato com mais de 120 dias é recusado; o caderno aceita no máximo 500 relatos novos por fazenda.
 - O consultor não tem fila offline: sem sinal ele vê a cópia salva e não grava. Só o caderno do vaqueiro guarda e envia depois.
+
+### Estado da etapa 3 (16 nov 2026)
+
+O cálculo de lotação está escrito e testado, em TypeScript puro (`src/lib/calc/`): suplemento, trechos de estadia com UA-dia, período de pastejo do piquete, ocorrida, global do ciclo e a lotação no período para a Análise. Não depende de nenhuma migração nova.
+
+- No mapa, o cartão do piquete em descanso mostra a ocorrida do último pastejo e a global do ciclo; o ocupado mostra a instantânea e a ocorrida até agora. Com suplemento, aparece também a versão "de pasto". O percentual de capim substituído não aparece em tela nenhuma.
+- A Análise mostra a lotação global no período, por mês, por módulo e o ranking dos piquetes.
+- Decidido na implementação e pode ser revisto: enquanto a fazenda tem menos de um ano de registro, a "lotação anual" é a lotação do período registrado, a partir da primeira entrada de gado (dividir 30 dias por 365 daria um número falso), e a tela avisa; a lotação por módulo na Análise usa a composição de hoje, não a de cada data; o ranking usa a lotação de pasto quando houve suplemento.
+- **Não portado do simulador:** a projeção de capacidade de suporte, a conta inversa de N e o M calibrado. Dependem do clima pelo centroide (etapa 4). O M calibrado segue com a ressalva dos achados da revisão: mede o manejo, não a capacidade do pasto.
+- Os números da ocorrida não foram comparados com dados de fazenda real, só com contas feitas à mão nos testes.
 
 O KML real usado para testar a importação fica fora do repositório, por decisão do Lucas. Nenhum nome de fazenda real entra no repositório, que é público.
 

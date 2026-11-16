@@ -9,7 +9,9 @@ import {
   type Module,
   type NewFarm,
   type PaddockPatch,
+  type RainRecord,
   type Repo,
+  type ReportPatch,
   type User,
 } from '../data/types';
 import { checkComposition } from '../lib/farm/modules';
@@ -66,7 +68,23 @@ export interface AppState {
   restoreEvent(lotId: string, eventId: string): Promise<Result<void>>;
   deleteLot(lotId: string): Promise<Result<void>>;
   restoreLot(lotId: string): Promise<Result<void>>;
+
+  /** Confere se chegou relato novo no caderno, sem reler a fazenda inteira. Falha em silêncio. */
+  refreshReports(): Promise<void>;
+  updateReport(reportId: string, patch: ReportPatch): Promise<Result<void>>;
+  discardReport(reportId: string): Promise<Result<void>>;
+  reopenReport(reportId: string): Promise<Result<void>>;
+  /** Lança um relato de mudança de gado como registro oficial do lote. */
+  launchMoveReport(reportId: string): Promise<Result<void>>;
+  /** Lança um relato de chuva. `substituir` troca o que já havia no dia; `somar` acrescenta. */
+  launchRainReport(reportId: string, mode: RainMode): Promise<Result<void>>;
+  /** Registro de chuva feito pelo próprio consultor. */
+  addRain(input: { date: IsoDate; mm: number; note?: string }, mode: RainMode): Promise<Result<void>>;
+  removeRain(rainId: string): Promise<Result<void>>;
+  rotateShareToken(): Promise<Result<void>>;
 }
+
+export type RainMode = 'somar' | 'substituir';
 
 export interface StoreDeps {
   repo: Repo;
@@ -120,6 +138,30 @@ export function createAppStore({ repo, auth, now = () => new Date() }: StoreDeps
 
     const setDeletedLocally = (ids: string[], deletedAt: string | null) =>
       patchData((d) => ({ ...d, events: d.events.map((e) => (ids.includes(e.id) ? { ...e, deletedAt } : e)) }));
+
+    const checkRain = (date: IsoDate, mm: number): string | null => {
+      if (!isIsoDate(date)) return 'Informe a data.';
+      if (date > today()) return 'A data não pode ser depois de hoje.';
+      if (!(mm >= 0) || mm > 500) return 'Chuva: informe os milímetros, de 0 a 500.';
+      return null;
+    };
+
+    /** Põe a leitura nova na lista em memória, com a mesma regra do banco para substituir. */
+    const mergeRain = (saved: RainRecord, mode: RainMode) =>
+      patchData((d) => ({
+        ...d,
+        rain: [...d.rain.filter((r) => r.id !== saved.id && !(mode === 'substituir' && r.date === saved.date)), saved],
+      }));
+
+    const setReportStatusLocally = (reportId: string, status: 'novo' | 'lancado' | 'descartado') =>
+      patchData((d) => ({ ...d, reports: d.reports.map((r) => (r.id === reportId ? { ...r, status } : r)) }));
+
+    const newReport = (reportId: string) => {
+      const data = get().data;
+      const report = data?.reports.find((r) => r.id === reportId);
+      if (!data || !report) return null;
+      return { data, report };
+    };
 
     const applyUser = async (user: User | null) => {
       if (user?.id === get().user?.id && get().phase !== 'starting') return;
@@ -212,7 +254,8 @@ export function createAppStore({ repo, auth, now = () => new Date() }: StoreDeps
         } catch (e) {
           if (get().farmId !== farmId) return;
           const saved = e instanceof RepoError && e.offline ? cache.loadFarm(user.id, farmId) : null;
-          if (saved) set({ data: saved.value, loading: false, staleSince: saved.savedAt });
+          // Cópia gravada por versão antiga do app pode não ter caderno nem chuva.
+          if (saved) set({ data: { ...saved.value, reports: saved.value.reports ?? [], rain: saved.value.rain ?? [] }, loading: false, staleSince: saved.savedAt });
           else set({ loading: false, loadError: message(e, 'Não deu para ler a fazenda.') });
         }
       },
@@ -431,6 +474,138 @@ export function createAppStore({ repo, auth, now = () => new Date() }: StoreDeps
         const r = await attempt('restaurar o lote', () => repo.setLotDeleted(lotId, null));
         if (r.ok) patchData((d) => ({ ...d, lots: d.lots.map((l) => (l.id === lotId ? { ...l, deletedAt: null } : l)) }));
         return r;
+      },
+
+      async refreshReports() {
+        const farmId = get().farmId;
+        if (!farmId || !get().data) return;
+        try {
+          const reports = await repo.listReports(farmId);
+          if (get().farmId === farmId) patchData((d) => ({ ...d, reports }));
+        } catch {
+          // Sem sinal: fica com o que já tinha. A próxima conferência tenta de novo.
+        }
+      },
+
+      async updateReport(reportId, patch) {
+        const ctx = newReport(reportId);
+        if (!ctx) return fail('Relato não encontrado.');
+        if (ctx.report.status !== 'novo') return fail('Esse relato já foi lançado ou descartado.');
+        if (patch.date !== undefined) {
+          if (!isIsoDate(patch.date)) return fail('Informe a data.');
+          if (patch.date > today()) return fail('A data não pode ser depois de hoje.');
+        }
+        if (patch.mm !== undefined && (patch.mm == null || !(patch.mm >= 0) || patch.mm > 500)) {
+          return fail('Chuva: informe os milímetros, de 0 a 500.');
+        }
+        if (patch.lotId !== undefined && !ctx.data.lots.some((l) => l.id === patch.lotId && !l.deletedAt)) return fail('Escolha o lote.');
+        if (patch.toPaddockId !== undefined && !ctx.data.paddocks.some((p) => p.id === patch.toPaddockId)) return fail('Escolha o piquete.');
+        const r = await attempt('alterar o relato', () => repo.updateReport(reportId, patch));
+        if (r.ok) patchData((d) => ({ ...d, reports: d.reports.map((x) => (x.id === reportId ? { ...x, ...patch } : x)) }));
+        return r;
+      },
+
+      async discardReport(reportId) {
+        const ctx = newReport(reportId);
+        if (!ctx) return fail('Relato não encontrado.');
+        if (ctx.report.status !== 'novo') return fail('Esse relato já foi lançado ou descartado.');
+        const r = await attempt('descartar o relato', () => repo.setReportStatus(reportId, 'descartado'));
+        if (r.ok) setReportStatusLocally(reportId, 'descartado');
+        return r;
+      },
+
+      async reopenReport(reportId) {
+        const ctx = newReport(reportId);
+        if (!ctx) return fail('Relato não encontrado.');
+        if (ctx.report.status !== 'descartado') return fail('Só relato descartado volta para novo.');
+        const r = await attempt('reabrir o relato', () => repo.setReportStatus(reportId, 'novo'));
+        if (r.ok) setReportStatusLocally(reportId, 'novo');
+        return r;
+      },
+
+      async launchMoveReport(reportId) {
+        const ctx = newReport(reportId);
+        if (!ctx) return fail('Relato não encontrado.');
+        const { report, data } = ctx;
+        if (report.kind !== 'mudanca' || report.status !== 'novo') return fail('Esse relato já foi lançado ou descartado.');
+        const lot = data.lots.find((l) => l.id === report.lotId && !l.deletedAt);
+        if (!lot || !report.toPaddockId) return fail('O lote deste relato não existe mais. Edite o relato ou descarte.');
+        // As mesmas regras de uma mudança feita pelo consultor (invariantes 2 e 3).
+        const plan = planMove({
+          events: data.events.filter((e) => e.lotId === lot.id),
+          lotId: lot.id,
+          lotName: lot.name,
+          toPaddockId: report.toPaddockId,
+          date: report.date,
+          today: today(),
+        });
+        if (!plan.ok) return plan;
+        try {
+          mergeEvents(await repo.launchMoveReport(reportId, data.farm.id, plan.value));
+          setReportStatusLocally(reportId, 'lancado');
+          return OK;
+        } catch (e) {
+          return fail(message(e, 'Não deu para lançar a mudança.'));
+        }
+      },
+
+      async launchRainReport(reportId, mode) {
+        const ctx = newReport(reportId);
+        if (!ctx) return fail('Relato não encontrado.');
+        const { report, data } = ctx;
+        if (report.kind !== 'chuva' || report.status !== 'novo' || report.mm == null) return fail('Esse relato já foi lançado ou descartado.');
+        const problem = checkRain(report.date, report.mm);
+        if (problem) return fail(problem);
+        const note = [report.reporter ? `relato de ${report.reporter}` : 'relato do caderno', report.note].filter(Boolean).join(': ');
+        try {
+          const saved = await repo.recordRain(
+            data.farm.id,
+            { id: crypto.randomUUID(), date: report.date, mm: report.mm, note },
+            { replace: mode === 'substituir', reportId },
+          );
+          mergeRain(saved, mode);
+          setReportStatusLocally(reportId, 'lancado');
+          return OK;
+        } catch (e) {
+          return fail(message(e, 'Não deu para lançar a chuva.'));
+        }
+      },
+
+      async addRain(input, mode) {
+        const data = get().data;
+        if (!data) return fail('Nenhuma fazenda aberta.');
+        const problem = checkRain(input.date, input.mm);
+        if (problem) return fail(problem);
+        try {
+          const saved = await repo.recordRain(
+            data.farm.id,
+            { id: crypto.randomUUID(), date: input.date, mm: input.mm, note: input.note?.trim() || null },
+            { replace: mode === 'substituir' },
+          );
+          mergeRain(saved, mode);
+          return OK;
+        } catch (e) {
+          return fail(message(e, 'Não deu para registrar a chuva.'));
+        }
+      },
+
+      async removeRain(rainId) {
+        const r = await attempt('apagar a chuva', () => repo.setRainDeleted(rainId, now().toISOString()));
+        if (r.ok) patchData((d) => ({ ...d, rain: d.rain.filter((x) => x.id !== rainId) }));
+        return r;
+      },
+
+      async rotateShareToken() {
+        const data = get().data;
+        if (!data) return fail('Nenhuma fazenda aberta.');
+        try {
+          const shareToken = await repo.rotateShareToken(data.farm.id);
+          patchData((d) => ({ ...d, farm: { ...d.farm, shareToken } }));
+          set({ farms: get().farms.map((f) => (f.id === data.farm.id ? { ...f, shareToken } : f)) });
+          return OK;
+        } catch (e) {
+          return fail(message(e, 'Não deu para trocar o link.'));
+        }
       },
     };
   });

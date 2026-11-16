@@ -3,19 +3,25 @@ import type { LotEvent } from '../lib/lots/types';
 import {
   COLS,
   eventToPayload,
+  jsonToNotebookContext,
   lotToPayload,
   moduleToArgs,
   newFarmToArgs,
+  notebookReportToPayload,
   paddockPatchToRow,
+  rainToPayload,
+  reportPatchToRow,
   rowToComposition,
   rowToEvent,
   rowToFarm,
   rowToLot,
   rowToModule,
   rowToPaddock,
+  rowToRain,
+  rowToReport,
   rowToWaterPoint,
 } from './rows';
-import { OFFLINE_MESSAGE, RepoError, type Auth, type FarmData, type Repo, type User } from './types';
+import { OFFLINE_MESSAGE, RepoError, type Auth, type FarmData, type NotebookApi, type Repo, type User } from './types';
 
 /** Espera máxima pela resposta do servidor (CLAUDE.md: 8 s), para a cópia salva poder entrar. */
 export const TIMEOUT_MS = 8000;
@@ -55,6 +61,8 @@ function toRepoError(e: any, doing: string): RepoError {
   if (e?.code === '42501' && /row-level security|permission denied/i.test(message)) {
     return new RepoError('Sua conta não tem acesso a essa fazenda.');
   }
+  // Recusas escritas pelas funções do banco já vêm em português, prontas para a tela.
+  if (message && ['22023', '42501', '53400'].includes(e?.code)) return new RepoError(message);
   if (e?.code === 'PGRST202' || e?.code === '42P01' || e?.code === 'PGRST205') {
     return new RepoError('O banco ainda não foi preparado: falta rodar o arquivo de criação das tabelas no Supabase.');
   }
@@ -120,7 +128,7 @@ export function createSupabaseRepo(client: SupabaseClient): Repo {
         const doing = 'ler a fazenda';
         const live = (table: keyof typeof COLS) =>
           client.from(table).select(COLS[table]).eq('farm_id', farmId).is('deleted_at', null);
-        const [farm, paddocks, water, lots, modules, compositions, events] = await Promise.all([
+        const [farm, paddocks, water, lots, modules, compositions, events, reports, rain] = await Promise.all([
           client.from('farms').select(COLS.farms).eq('id', farmId).maybeSingle(),
           fetchAll(() => live('paddocks').order('sort').order('id'), doing),
           fetchAll(() => live('water_points').order('id'), doing),
@@ -133,6 +141,8 @@ export function createSupabaseRepo(client: SupabaseClient): Repo {
             () => client.from('lot_events').select(COLS.lot_events).eq('farm_id', farmId).order('event_date').order('id'),
             doing,
           ),
+          fetchAll(() => live('field_reports').order('created_at').order('id'), doing),
+          fetchAll(() => live('rain_records').order('rain_date').order('id'), doing),
         ]);
         check(farm.error, doing);
         if (!farm.data) throw new RepoError('Fazenda não encontrada ou sua conta não tem acesso a ela.');
@@ -144,6 +154,8 @@ export function createSupabaseRepo(client: SupabaseClient): Repo {
           modules: modules.map(rowToModule),
           compositions: compositions.map(rowToComposition),
           events: events.map(rowToEvent),
+          reports: reports.map(rowToReport),
+          rain: rain.map(rowToRain),
         };
       }),
 
@@ -202,6 +214,86 @@ export function createSupabaseRepo(client: SupabaseClient): Repo {
         const { error } = await client.from('lots').update({ deleted_at: deletedAt }).eq('id', lotId);
         check(error, 'alterar o lote');
       }),
+
+    listReports: (farmId) =>
+      run('ler o caderno', async () => {
+        const rows = await fetchAll(
+          () => client.from('field_reports').select(COLS.field_reports).eq('farm_id', farmId).is('deleted_at', null).order('created_at').order('id'),
+          'ler o caderno',
+        );
+        return rows.map(rowToReport);
+      }),
+
+    updateReport: (reportId, patch) =>
+      run('alterar o relato', async () => {
+        const { error } = await client.from('field_reports').update(reportPatchToRow(patch)).eq('id', reportId);
+        check(error, 'alterar o relato');
+      }),
+
+    setReportStatus: (reportId, status) =>
+      run('alterar o relato', async () => {
+        const { error } = await client.from('field_reports').update({ status }).eq('id', reportId);
+        check(error, 'alterar o relato');
+      }),
+
+    launchMoveReport: (reportId, farmId, events) =>
+      run('lançar a mudança', async (): Promise<LotEvent[]> => {
+        const { data, error } = await client.rpc('launch_move_report', {
+          p_report: reportId,
+          p_events: events.map((e) => eventToPayload(farmId, e)),
+        });
+        check(error, 'lançar a mudança');
+        return ((data as Record<string, unknown>[] | null) ?? []).map(rowToEvent);
+      }),
+
+    recordRain: (farmId, rain, options) =>
+      run('registrar a chuva', async () => {
+        const { data, error } = await client.rpc('record_rain', {
+          p_rain: rainToPayload(farmId, rain),
+          p_replace: options.replace,
+          p_report: options.reportId ?? null,
+        });
+        check(error, 'registrar a chuva');
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!row) throw new RepoError('Não deu para registrar a chuva.');
+        return rowToRain(row);
+      }),
+
+    setRainDeleted: (rainId, deletedAt) =>
+      run('alterar a chuva', async () => {
+        const { error } = await client.from('rain_records').update({ deleted_at: deletedAt }).eq('id', rainId);
+        check(error, 'alterar a chuva');
+      }),
+
+    rotateShareToken: (farmId) =>
+      run('trocar o link', async () => {
+        const { data, error } = await client.rpc('rotate_share_token', { p_farm: farmId });
+        check(error, 'trocar o link');
+        return String(data);
+      }),
+  };
+}
+
+/** Acesso do link público do caderno. Funciona sem login: as funções conferem o token. */
+export function createSupabaseNotebook(client: SupabaseClient): NotebookApi {
+  return {
+    context: async (token) => {
+      try {
+        const { data, error } = await client.rpc('notebook_context', { p_token: token });
+        if (error) throw error;
+        return jsonToNotebookContext(data);
+      } catch (e) {
+        throw toRepoError(e, 'abrir o caderno');
+      }
+    },
+    submit: async (token, report) => {
+      try {
+        const { error } = await client.rpc('submit_field_report', { p_token: token, p_report: notebookReportToPayload(report) });
+        if (error) throw error;
+      } catch (e) {
+        throw toRepoError(e, 'enviar o relato');
+      }
+    },
   };
 }
 

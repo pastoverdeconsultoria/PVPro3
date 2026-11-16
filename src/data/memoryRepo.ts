@@ -5,9 +5,12 @@ import {
   type Auth,
   type CompositionRow,
   type Farm,
+  type FieldReport,
   type Lot,
   type Module,
+  type NotebookApi,
   type Paddock,
+  type RainRecord,
   type Repo,
   type User,
   type WaterPoint,
@@ -28,6 +31,10 @@ export function createMemoryBackend() {
   const modules: (Module & { deletedAt: string | null })[] = [];
   const compositions: (CompositionRow & { deletedAt: string | null })[] = [];
   const events: LotEvent[] = [];
+  const reports: (FieldReport & { farmId: string })[] = [];
+  const rain: (RainRecord & { farmId: string; deletedAt: string | null })[] = [];
+  const newToken = () => (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '');
+  const farmByToken = (token: string) => farms.find((f) => token.length >= 32 && f.shareToken === token);
   const accounts = new Map<string, { id: string; password: string }>();
   const listeners = new Set<(u: User | null) => void>();
 
@@ -86,6 +93,8 @@ export function createMemoryBackend() {
           .filter((c) => !c.deletedAt && farmModules.some((m) => m.id === c.moduleId))
           .map(({ deletedAt: _d, ...c }) => c),
         events: events.filter((e) => farmLots.some((l) => l.id === e.lotId)),
+        reports: reports.filter((r) => r.farmId === farmId).map(({ farmId: _f, ...r }) => r),
+        rain: rain.filter((r) => r.farmId === farmId && !r.deletedAt).map(({ farmId: _f, deletedAt: _d, ...r }) => r),
       });
     },
 
@@ -97,7 +106,7 @@ export function createMemoryBackend() {
         if (members.get(input.farm.id)?.has(id)) return;
         throw new RepoError('Esse id de fazenda já está em uso.');
       }
-      farms.push({ ...input.farm });
+      farms.push({ ...input.farm, shareToken: newToken() });
       members.set(input.farm.id, new Set([id]));
       paddocks.push(...structuredClone(input.paddocks));
       waterPoints.push(...structuredClone(input.waterPoints));
@@ -174,6 +183,114 @@ export function createMemoryBackend() {
       member(l.farmId);
       l.deletedAt = deletedAt;
     },
+
+    async listReports(farmId) {
+      online('listReports');
+      member(farmId);
+      return structuredClone(reports.filter((r) => r.farmId === farmId).map(({ farmId: _f, ...r }) => r));
+    },
+
+    async updateReport(reportId, patch) {
+      online('updateReport');
+      const r = reports.find((x) => x.id === reportId);
+      if (!r) return;
+      member(r.farmId);
+      Object.assign(r, patch);
+    },
+
+    async setReportStatus(reportId, status) {
+      online('setReportStatus');
+      const r = reports.find((x) => x.id === reportId);
+      if (!r) return;
+      member(r.farmId);
+      r.status = status;
+    },
+
+    async launchMoveReport(reportId, farmId, list) {
+      online('launchMoveReport');
+      member(farmId);
+      const r = reports.find((x) => x.id === reportId && x.farmId === farmId);
+      if (!r || r.kind !== 'mudanca' || r.status !== 'novo') throw new RepoError('Esse relato já foi lançado ou descartado.');
+      const saved = insertEvents(farmId, list);
+      r.status = 'lancado';
+      return structuredClone(saved);
+    },
+
+    async recordRain(farmId, input, options) {
+      online('recordRain');
+      member(farmId);
+      if (options.reportId) {
+        const r = reports.find((x) => x.id === options.reportId && x.farmId === farmId);
+        if (!r || r.kind !== 'chuva' || r.status !== 'novo') throw new RepoError('Esse relato já foi lançado ou descartado.');
+        r.status = 'lancado';
+      }
+      if (options.replace) {
+        const now = new Date().toISOString();
+        for (const x of rain) if (x.farmId === farmId && x.date === input.date && !x.deletedAt) x.deletedAt = now;
+      }
+      const row = { ...input, reportId: options.reportId ?? null, farmId, deletedAt: null };
+      rain.push(row);
+      const { farmId: _f, deletedAt: _d, ...out } = row;
+      return out;
+    },
+
+    async setRainDeleted(rainId, deletedAt) {
+      online('setRainDeleted');
+      const r = rain.find((x) => x.id === rainId);
+      if (!r) return;
+      member(r.farmId);
+      r.deletedAt = deletedAt;
+    },
+
+    async rotateShareToken(farmId) {
+      online('rotateShareToken');
+      member(farmId);
+      const f = farms.find((x) => x.id === farmId)!;
+      f.shareToken = newToken();
+      return f.shareToken;
+    },
+  };
+
+  /** O link público: não olha quem está logado, só o token. */
+  const notebook: NotebookApi = {
+    async context(token) {
+      calls.push('notebook.context');
+      if (offline) throw new RepoError(OFFLINE_MESSAGE, true);
+      const f = farmByToken(token);
+      if (!f) return null;
+      return {
+        farmName: f.name,
+        paddocks: paddocks.filter((p) => p.farmId === f.id).sort((a, b) => a.sort - b.sort).map((p) => ({ id: p.id, name: p.name })),
+        lots: lots.filter((l) => l.farmId === f.id && !l.deletedAt).map((l) => ({ id: l.id, name: l.name })),
+      };
+    },
+    async submit(token, report) {
+      calls.push('notebook.submit');
+      if (offline) throw new RepoError(OFFLINE_MESSAGE, true);
+      const f = farmByToken(token);
+      if (!f) throw new RepoError('Este link do caderno não vale mais. Peça o link novo.');
+      if (reports.some((r) => r.id === report.id)) return;
+      if (report.kind === 'chuva' && !(report.mm != null && report.mm >= 0 && report.mm <= 500)) {
+        throw new RepoError('Chuva: informe os milímetros, de 0 a 500.');
+      }
+      if (report.kind === 'mudanca') {
+        if (!lots.some((l) => l.id === report.lotId && l.farmId === f.id && !l.deletedAt)) throw new RepoError('Lote não encontrado. Atualize a página.');
+        if (!paddocks.some((p) => p.id === report.toPaddockId && p.farmId === f.id)) throw new RepoError('Piquete não encontrado. Atualize a página.');
+      }
+      reports.push({
+        id: report.id,
+        farmId: f.id,
+        kind: report.kind,
+        date: report.date,
+        mm: report.kind === 'chuva' ? report.mm! : null,
+        lotId: report.kind === 'mudanca' ? report.lotId! : null,
+        toPaddockId: report.kind === 'mudanca' ? report.toPaddockId! : null,
+        reporter: report.reporter?.trim() || null,
+        note: report.note?.trim() || null,
+        status: 'novo',
+        createdAt: new Date().toISOString(),
+      });
+    },
   };
 
   const auth: Auth = {
@@ -205,6 +322,7 @@ export function createMemoryBackend() {
   return {
     repo,
     auth,
+    notebook,
     /** Nomes das chamadas feitas ao "servidor", para os testes conferirem. */
     calls,
     setOffline(value: boolean) {

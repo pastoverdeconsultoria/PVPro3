@@ -25,6 +25,8 @@ function farm(): FarmData & { p: (name: string) => string } {
     modules: [],
     compositions: [],
     events: [],
+    reports: [],
+    rain: [],
     p: (name) => nf.paddocks.find((x) => x.name === name)!.id,
   };
 }

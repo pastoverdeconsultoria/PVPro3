@@ -7,6 +7,8 @@ export interface Farm {
   name: string;
   municipality: string | null;
   centroid: { lat: number; lon: number } | null;
+  /** Segredo do link do caderno da equipe. Só membro da fazenda recebe. */
+  shareToken?: string | null;
 }
 
 export interface Paddock {
@@ -62,6 +64,64 @@ export interface CompositionRow {
   validFrom: IsoDate;
 }
 
+export type ReportKind = 'chuva' | 'mudanca';
+export type ReportStatus = 'novo' | 'lancado' | 'descartado';
+
+/** Relato feito pela equipe no caderno. Fica "novo" até o consultor lançar ou descartar. */
+export interface FieldReport {
+  id: string;
+  kind: ReportKind;
+  /** Dia do fato, informado por quem relatou. */
+  date: IsoDate;
+  mm: number | null;
+  lotId: string | null;
+  toPaddockId: string | null;
+  reporter: string | null;
+  note: string | null;
+  status: ReportStatus;
+  /** Quando chegou ao servidor. */
+  createdAt: string;
+}
+
+/** Uma leitura de chuva real. O total do dia é a soma das leituras do dia. */
+export interface RainRecord {
+  id: string;
+  date: IsoDate;
+  mm: number;
+  note: string | null;
+  reportId: string | null;
+}
+
+export type ReportPatch = Partial<Pick<FieldReport, 'date' | 'mm' | 'lotId' | 'toPaddockId' | 'note'>>;
+
+/** O que o link público mostra: só nomes, para montar o formulário. */
+export interface NotebookContext {
+  farmName: string;
+  paddocks: { id: string; name: string }[];
+  lots: { id: string; name: string }[];
+}
+
+/** Relato como sai do aparelho do vaqueiro. */
+export interface NotebookReport {
+  id: string;
+  kind: ReportKind;
+  date: IsoDate;
+  mm?: number;
+  lotId?: string;
+  toPaddockId?: string;
+  reporter?: string;
+  note?: string;
+  /** Quando foi feito no aparelho (pode ser bem antes do envio, se não havia sinal). */
+  deviceCreatedAt: string;
+}
+
+/** Acesso do link público, sem login. Só duas operações, as duas conferem o token. */
+export interface NotebookApi {
+  /** Null quando o link não vale mais. */
+  context(token: string): Promise<NotebookContext | null>;
+  submit(token: string, report: NotebookReport): Promise<void>;
+}
+
 /** Tudo de uma fazenda que as telas precisam. O estado dos lotes é derivado de `events`. */
 export interface FarmData {
   farm: Farm;
@@ -71,6 +131,8 @@ export interface FarmData {
   modules: Module[];
   compositions: CompositionRow[];
   events: LotEvent[];
+  reports: FieldReport[];
+  rain: RainRecord[];
 }
 
 export interface NewFarm {
@@ -114,6 +176,22 @@ export interface Repo {
   /** Apaga de forma suave (ou desfaz, com `null`) um grupo de registros de uma vez. */
   setEventsDeleted(eventIds: string[], deletedAt: string | null): Promise<void>;
   setLotDeleted(lotId: string, deletedAt: string | null): Promise<void>;
+
+  /** Só os relatos do caderno, para conferir se chegou coisa nova sem reler a fazenda inteira. */
+  listReports(farmId: string): Promise<FieldReport[]>;
+  updateReport(reportId: string, patch: ReportPatch): Promise<void>;
+  /** Descarta um relato, ou devolve um descartado para "novo". */
+  setReportStatus(reportId: string, status: 'novo' | 'descartado'): Promise<void>;
+  /** Lança um relato de mudança: grava os registros e marca o relato, tudo ou nada. */
+  launchMoveReport(reportId: string, farmId: string, events: LotEvent[]): Promise<LotEvent[]>;
+  /**
+   * Registra chuva de um dia. `replace` apaga (suave) as leituras que já havia no
+   * dia; sem ele a leitura se soma. Com `reportId`, o relato vira "lancado" junto.
+   */
+  recordRain(farmId: string, rain: Pick<RainRecord, 'id' | 'date' | 'mm' | 'note'>, options: { replace: boolean; reportId?: string }): Promise<RainRecord>;
+  setRainDeleted(rainId: string, deletedAt: string | null): Promise<void>;
+  /** Troca o link do caderno; o antigo para de funcionar. Devolve o token novo. */
+  rotateShareToken(farmId: string): Promise<string>;
 }
 
 export interface Auth {

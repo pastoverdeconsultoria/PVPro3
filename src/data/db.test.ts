@@ -115,7 +115,8 @@ describe('abertura de fazenda', () => {
   it('quem abre vira dono e enxerga fazenda, piquetes e bebedouros', async () => {
     await as(db, ana, async () => {
       const farms = (await db.query<R>(`select ${COLS.farms} from public.farms`)).rows.map(rowToFarm);
-      expect(farms).toEqual([fazAna.farm]);
+      // O token do caderno é gerado pelo banco e só membro recebe.
+      expect(farms).toEqual([{ ...fazAna.farm, shareToken: expect.stringMatching(/^[0-9a-f]{64}$/) }]);
 
       const paddocks = (await db.query<R>(`select ${COLS.paddocks} from public.paddocks order by sort`)).rows.map(rowToPaddock);
       expect(paddocks.map((p) => p.name)).toEqual(['P01', 'P02', 'Reserva']);

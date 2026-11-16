@@ -1,5 +1,5 @@
 import type { LotEvent } from '../lib/lots/types';
-import type { CompositionRow, Farm, Lot, Module, NewFarm, Paddock, WaterPoint } from './types';
+import type { CompositionRow, Farm, FieldReport, Lot, Module, NewFarm, NotebookContext, NotebookReport, Paddock, RainRecord, WaterPoint } from './types';
 
 // Tradução entre as linhas do banco (snake_case) e os tipos do app. Fica num
 // arquivo só, sem dependência do Supabase, para o teste do banco conferir que as
@@ -7,7 +7,7 @@ import type { CompositionRow, Farm, Lot, Module, NewFarm, Paddock, WaterPoint } 
 
 /** Colunas lidas de cada tabela. */
 export const COLS = {
-  farms: 'id,name,municipality,centroid_lat,centroid_lon',
+  farms: 'id,name,municipality,centroid_lat,centroid_lon,share_token',
   paddocks: 'id,farm_id,name,folder,geom,area_ha,species,is_grazing,initial_last_exit,sort',
   water_points: 'id,farm_id,name,lat,lon',
   lots: 'id,farm_id,name,deleted_at',
@@ -15,6 +15,8 @@ export const COLS = {
   module_compositions: 'id,module_id,paddock_id,ord,valid_from',
   lot_events:
     'id,lot_id,event_date,seq,type,heads,weight_kg,category,pct_pv,paddock_id,reason,heads_weighed,link,note,deleted_at',
+  field_reports: 'id,kind,report_date,mm,lot_id,to_paddock_id,reporter,note,status,created_at',
+  rain_records: 'id,rain_date,mm,note,report_id',
 } as const;
 
 // biome-ignore lint: linhas do banco chegam sem tipo
@@ -32,6 +34,7 @@ export function rowToFarm(r: Row): Farm {
     municipality: r.municipality ?? null,
     centroid:
       r.centroid_lat == null || r.centroid_lon == null ? null : { lat: num(r.centroid_lat), lon: num(r.centroid_lon) },
+    shareToken: r.share_token ?? null,
   };
 }
 
@@ -111,6 +114,65 @@ export function rowToEvent(r: Row): LotEvent {
     default:
       throw new Error(`Tipo de registro desconhecido: ${String(r.type)}`);
   }
+}
+
+const timestamp = (v: unknown): string => (v instanceof Date ? v.toISOString() : String(v));
+
+export function rowToReport(r: Row): FieldReport {
+  return {
+    id: r.id,
+    kind: r.kind,
+    date: isoDate(r.report_date),
+    mm: numOrNull(r.mm),
+    lotId: r.lot_id ?? null,
+    toPaddockId: r.to_paddock_id ?? null,
+    reporter: r.reporter ?? null,
+    note: r.note ?? null,
+    status: r.status,
+    createdAt: timestamp(r.created_at),
+  };
+}
+
+export function rowToRain(r: Row): RainRecord {
+  return { id: r.id, date: isoDate(r.rain_date), mm: num(r.mm), note: r.note ?? null, reportId: r.report_id ?? null };
+}
+
+/** Colunas de relato que o consultor pode alterar antes de lançar. */
+export function reportPatchToRow(patch: { date?: string; mm?: number | null; lotId?: string | null; toPaddockId?: string | null; note?: string | null }): Row {
+  const r: Row = {};
+  if (patch.date !== undefined) r.report_date = patch.date;
+  if (patch.mm !== undefined) r.mm = patch.mm;
+  if (patch.lotId !== undefined) r.lot_id = patch.lotId;
+  if (patch.toPaddockId !== undefined) r.to_paddock_id = patch.toPaddockId;
+  if (patch.note !== undefined) r.note = patch.note;
+  return r;
+}
+
+/** Chuva no formato que a função `record_rain` recebe. */
+export function rainToPayload(farmId: string, rain: { id: string; date: string; mm: number; note: string | null }): Row {
+  return { id: rain.id, farm_id: farmId, rain_date: rain.date, mm: rain.mm, note: rain.note };
+}
+
+/** Relato do caderno no formato que a função `submit_field_report` recebe. */
+export function notebookReportToPayload(r: NotebookReport): Row {
+  return {
+    id: r.id,
+    kind: r.kind,
+    report_date: r.date,
+    mm: r.kind === 'chuva' ? r.mm ?? null : null,
+    lot_id: r.kind === 'mudanca' ? r.lotId ?? null : null,
+    to_paddock_id: r.kind === 'mudanca' ? r.toPaddockId ?? null : null,
+    reporter: r.reporter ?? null,
+    note: r.note ?? null,
+    device_created_at: r.deviceCreatedAt,
+  };
+}
+
+/** Resposta da função `notebook_context`. Null quando o link não vale. */
+export function jsonToNotebookContext(j: Row | null | string): NotebookContext | null {
+  const v = typeof j === 'string' ? (JSON.parse(j) as Row | null) : j;
+  if (!v) return null;
+  return { farmName: v.farm_name, paddocks: v.paddocks ?? [], lots: v.lots ?? [] };
 }
 
 /** Registro no formato que a função `record_lot_events` do banco recebe. `seq` não vai: é do servidor. */

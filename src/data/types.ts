@@ -124,3 +124,5 @@ export interface Auth {
   signUp(email: string, password: string): Promise<{ needsConfirmation: boolean }>;
   signOut(): Promise<void>;
 }
+
+export const OFFLINE_MESSAGE = 'Sem resposta do servidor. Confira o sinal e tente de novo.';

@@ -19,3 +19,14 @@ export function diffDays(from: IsoDate, to: IsoDate): number {
 export function formatBr(d: IsoDate): string {
   return `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
 }
+
+/** Data de hoje no relógio do aparelho (não em UTC: às 22h na Bahia ainda é o mesmo dia). */
+export function todayLocal(now: Date = new Date()): IsoDate {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+}
+
+/** 'AAAA-MM-DD' para 'DD/MM'. */
+export function formatDayMonth(d: IsoDate): string {
+  return `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+}

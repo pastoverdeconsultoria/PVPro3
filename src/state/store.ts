@@ -478,7 +478,7 @@ export function createAppStore({ repo, auth, now = () => new Date() }: StoreDeps
 
       async refreshReports() {
         const farmId = get().farmId;
-        if (!farmId || !get().data) return;
+        if (!farmId || !get().data || get().data?.notebookReady === false) return;
         try {
           const reports = await repo.listReports(farmId);
           if (get().farmId === farmId) patchData((d) => ({ ...d, reports }));

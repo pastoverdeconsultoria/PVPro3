@@ -214,6 +214,16 @@ O que ainda não foi feito ou conferido:
 - Decidido na implementação, sem perguntar ao Lucas, e pode ser revisto: a lotação global da fazenda usa só o gado dentro de piquete de pastejo (como o simulador mostra "UA em pastejo"); o cartão do piquete mostra a lotação instantânea e o último período, mas a ocorrida e a global do ciclo ficaram para a etapa 3; o GMD usa só registros de pesagem (o peso do cadastro não conta, a menos que marcado como peso de balança); transferência entre lotes não tem tela.
 - Sem sinal o app abre e mostra a última cópia salva, mas não grava. A fila offline é da etapa 2.
 
+### Estado da etapa 2 (16 nov 2026)
+
+Em 16 nov 2026 o Lucas confirmou que a etapa 1 funciona no ar (login, abertura de fazenda) e disse "Continue o projeto". O caderno da equipe está escrito e testado (ver `README.md`).
+
+- App publicado em `https://pv-pro3.vercel.app`, banco no projeto Supabase `pvpro3`. A Vercel publica a cada envio ao `main`. O botão Redeploy da Vercel pede código por e-mail, e a caixa do Lucas está cheia: para republicar, enviar um commit.
+- A migração `supabase/migrations/20261116120000_caderno.sql` precisa ser rodada pelo Lucas no SQL Editor. Enquanto não for, o app tolera a falta das tabelas e avisa nas telas Caderno e Clima.
+- Não conferido no Supabase real: as funções do link público e o lançamento de relato. Só no Postgres local (PGlite) e no banco em memória dos testes.
+- Decidido na implementação, sem perguntar ao Lucas, e pode ser revisto: o relato chega ao banco por função com conferência de token (o anônimo não tem permissão em tabela nenhuma), em vez de política de inserção; a chuva é uma tabela própria com várias leituras por dia, que se somam, e ao lançar num dia que já tem leitura o consultor escolhe somar ou substituir; o link pode ser trocado, e o antigo para de valer; o fuso para "hoje" no servidor é America/Bahia; relato com mais de 120 dias é recusado; o caderno aceita no máximo 500 relatos novos por fazenda.
+- O consultor não tem fila offline: sem sinal ele vê a cópia salva e não grava. Só o caderno do vaqueiro guarda e envia depois.
+
 O KML real usado para testar a importação fica fora do repositório, por decisão do Lucas. Nenhum nome de fazenda real entra no repositório, que é público.
 
 ## Achados da revisão do simulador (Claude, 15 nov 2026, não decididos)

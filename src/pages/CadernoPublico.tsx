@@ -192,7 +192,7 @@ export function CadernoPublico({ token }: { token: string }) {
               <button
                 key={k}
                 type="button"
-                className={`chip min-h-[48px] flex-1 justify-center text-[15px] ${kind === k ? 'chip-on' : ''}`}
+                className={`chip min-h-[48px] flex-1 justify-center whitespace-nowrap !px-2 text-[14px] ${kind === k ? 'chip-on' : ''}`}
                 aria-pressed={kind === k}
                 onClick={() => {
                   setKind(k);

@@ -64,7 +64,7 @@ function toRepoError(e: any, doing: string): RepoError {
   // Recusas escritas pelas funções do banco já vêm em português, prontas para a tela.
   if (message && ['22023', '42501', '53400'].includes(e?.code)) return new RepoError(message);
   if (e?.code === 'PGRST202' || e?.code === '42P01' || e?.code === 'PGRST205') {
-    return new RepoError('O banco ainda não foi preparado: falta rodar o arquivo de criação das tabelas no Supabase.');
+    return new RepoError('O banco ainda não foi preparado: falta rodar o arquivo de criação das tabelas no Supabase.', false, true);
   }
   return new RepoError(message ? `Não deu para ${doing}: ${message}` : `Não deu para ${doing}.`);
 }
@@ -128,6 +128,15 @@ export function createSupabaseRepo(client: SupabaseClient): Repo {
         const doing = 'ler a fazenda';
         const live = (table: keyof typeof COLS) =>
           client.from(table).select(COLS[table]).eq('farm_id', farmId).is('deleted_at', null);
+        // As tabelas do caderno chegam numa migração posterior. Enquanto ela não for
+        // rodada, a fazenda abre normalmente, só sem caderno e sem chuva.
+        let notebookReady = true;
+        const optional = (rows: Promise<Record<string, unknown>[]>) =>
+          rows.catch((e) => {
+            if (!(e instanceof RepoError) || !e.schemaMissing) throw e;
+            notebookReady = false;
+            return [] as Record<string, unknown>[];
+          });
         const [farm, paddocks, water, lots, modules, compositions, events, reports, rain] = await Promise.all([
           client.from('farms').select(COLS.farms).eq('id', farmId).maybeSingle(),
           fetchAll(() => live('paddocks').order('sort').order('id'), doing),
@@ -141,8 +150,8 @@ export function createSupabaseRepo(client: SupabaseClient): Repo {
             () => client.from('lot_events').select(COLS.lot_events).eq('farm_id', farmId).order('event_date').order('id'),
             doing,
           ),
-          fetchAll(() => live('field_reports').order('created_at').order('id'), doing),
-          fetchAll(() => live('rain_records').order('rain_date').order('id'), doing),
+          optional(fetchAll(() => live('field_reports').order('created_at').order('id'), doing)),
+          optional(fetchAll(() => live('rain_records').order('rain_date').order('id'), doing)),
         ]);
         check(farm.error, doing);
         if (!farm.data) throw new RepoError('Fazenda não encontrada ou sua conta não tem acesso a ela.');
@@ -156,6 +165,7 @@ export function createSupabaseRepo(client: SupabaseClient): Repo {
           events: events.map(rowToEvent),
           reports: reports.map(rowToReport),
           rain: rain.map(rowToRain),
+          notebookReady,
         };
       }),
 

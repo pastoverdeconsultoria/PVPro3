@@ -35,6 +35,16 @@ export function Caderno() {
         <p className="k m-0 max-w-[70ch]">O vaqueiro anota chuva e mudança de gado pelo link, sem login. Nada entra no cálculo até você conferir e lançar.</p>
       </div>
 
+      {data.notebookReady === false ? (
+        <section className="card flex flex-col gap-2 border-warn/60" role="alert">
+          <h2 className="h2 text-warn">Falta preparar o banco para o caderno</h2>
+          <p className="k m-0 max-w-[70ch]">
+            O caderno e a chuva precisam de duas tabelas novas. No Supabase, abra o SQL Editor, cole o arquivo
+            <b> supabase/migrations/20261116120000_caderno.sql</b> e rode uma vez. Depois atualize esta tela.
+          </p>
+        </section>
+      ) : null}
+
       <ShareLink token={data.farm.shareToken ?? null} farmName={data.farm.name} />
 
       <section className="card flex flex-col gap-3" aria-label="Relatos novos">

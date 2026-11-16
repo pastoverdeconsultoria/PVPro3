@@ -12,6 +12,7 @@ import type { RainMode } from '../state/store';
  */
 export function Clima() {
   const rain = useApp((s) => s.data?.rain);
+  const ready = useApp((s) => s.data?.notebookReady !== false);
   const centroid = useApp((s) => s.data?.farm.centroid);
   const addRain = useApp((s) => s.addRain);
   const removeRain = useApp((s) => s.removeRain);
@@ -37,6 +38,15 @@ export function Clima() {
         <h1 className="big m-0 text-[30px] desk:text-[34px]">Clima</h1>
         <p className="k m-0 max-w-[70ch]">Chuva real, lida no pluviômetro. Dia sem leitura não vira 0 mm: para dia sem chuva, registre 0.</p>
       </div>
+
+      {ready ? null : (
+        <section className="card flex flex-col gap-2 border-warn/60" role="alert">
+          <h2 className="h2 text-warn">Falta preparar o banco para a chuva</h2>
+          <p className="k m-0 max-w-[70ch]">
+            No Supabase, abra o SQL Editor, cole o arquivo <b>supabase/migrations/20261116120000_caderno.sql</b> e rode uma vez. Depois atualize esta tela.
+          </p>
+        </section>
+      )}
 
       <div className="flex flex-wrap gap-3 desk:gap-4">
         <section aria-label="Chuva registrada no mês" className="min-w-0 flex-[2_1_280px] rounded-card bg-lime p-5 text-ink">

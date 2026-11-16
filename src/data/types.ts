@@ -133,6 +133,8 @@ export interface FarmData {
   events: LotEvent[];
   reports: FieldReport[];
   rain: RainRecord[];
+  /** Falso quando o banco ainda não tem as tabelas do caderno (falta rodar o SQL da etapa 2). */
+  notebookReady?: boolean;
 }
 
 export interface NewFarm {
@@ -154,6 +156,8 @@ export class RepoError extends Error {
     message: string,
     /** Verdadeiro quando o servidor não respondeu (sem sinal ou tempo esgotado). */
     readonly offline = false,
+    /** Verdadeiro quando a tabela ou função ainda não existe no banco (falta rodar uma migração). */
+    readonly schemaMissing = false,
   ) {
     super(message);
     this.name = 'RepoError';

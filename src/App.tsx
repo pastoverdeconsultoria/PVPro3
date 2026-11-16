@@ -1,6 +1,8 @@
-import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes, useMatch } from 'react-router-dom';
 import { Shell } from './components/Shell';
 import { lazyScreen } from './lib/lazyScreen';
+import { Caderno } from './pages/Caderno';
+import { CadernoPublico } from './pages/CadernoPublico';
 import { Clima } from './pages/Clima';
 import { Fazendas } from './pages/Fazendas';
 import { Login } from './pages/Login';
@@ -18,6 +20,9 @@ const NovaFazenda = lazyScreen(() => import('./pages/NovaFazenda'));
 
 export function App() {
   const phase = useApp((s) => s.phase);
+  // O link do caderno abre sem login, esteja ou não alguém com conta neste aparelho.
+  const notebook = useMatch('/c/:token');
+  if (notebook?.params.token) return <CadernoPublico token={notebook.params.token} />;
 
   if (phase === 'starting') {
     return (
@@ -39,6 +44,7 @@ export function App() {
           <Route path="modulos" element={<Modulos />} />
           <Route path="rebanho" element={<Rebanho />} />
           <Route path="clima" element={<Clima />} />
+          <Route path="caderno" element={<Caderno />} />
           <Route path="analise" element={<Analise />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -26,7 +26,7 @@ const LAZY_WAIT = { timeout: 20_000 };
 
 function open(path = '/') {
   return render(
-    <AppProvider store={store}>
+    <AppProvider store={store} notebook={be.notebook}>
       <MemoryRouter initialEntries={[path]}>
         <App />
       </MemoryRouter>

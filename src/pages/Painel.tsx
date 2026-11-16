@@ -6,11 +6,12 @@ import { locationText } from '../lib/farm/farmView';
 import type { ModuleView } from '../lib/farm/modules';
 import { gmdText, nf } from '../lib/format';
 import { formatDayMonth } from '../lib/lots/dates';
-import { useFarmView } from '../state/AppContext';
+import { useApp, useFarmView } from '../state/AppContext';
 
 export function Painel() {
   const fv = useFarmView();
   const [moving, setMoving] = useState<string | null>(null);
+  const newReports = useApp((s) => s.data?.reports.reduce((n, r) => n + (r.status === 'novo' ? 1 : 0), 0) ?? 0);
   if (!fv) return null;
 
   const { view, modules } = fv;
@@ -73,6 +74,20 @@ export function Painel() {
           </section>
         ))}
       </div>
+
+      <Link
+        to="/caderno"
+        aria-label="Caderno da equipe"
+        className={`card flex items-center justify-between gap-3 !py-3.5 text-text no-underline ${newReports ? 'border-warn' : ''}`}
+      >
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="font-display text-[17px] font-semibold">Caderno da equipe</span>
+          <span className={`text-[13px] ${newReports ? 'text-warn' : 'text-muted'}`}>
+            {newReports ? `${newReports} ${newReports === 1 ? 'relato novo esperando' : 'relatos novos esperando'} você lançar` : 'Nenhum relato novo. Link do vaqueiro e revisão.'}
+          </span>
+        </span>
+        <Icon name="arrow" />
+      </Link>
 
       {problems.length || outside.length ? (
         <section className="card flex flex-col gap-2 border-warn/60" aria-label="Avisos">

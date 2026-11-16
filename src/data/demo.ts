@@ -57,5 +57,15 @@ export async function demoBackend() {
       { validFrom: day(60), paddockIds: groups[i].map(pid) },
     );
   }
-  return store;
+  // Caderno: dois relatos esperando revisão e um pouco de chuva registrada.
+  const token = s().data!.farm.shareToken!;
+  const now = new Date().toISOString();
+  await be.notebook.submit(token, { id: crypto.randomUUID(), kind: 'mudanca', date: day(0), lotId: lot('Lote 2'), toPaddockId: pid('P06'), reporter: 'Zé', note: 'pasto no ponto', deviceCreatedAt: now });
+  await be.notebook.submit(token, { id: crypto.randomUUID(), kind: 'chuva', date: day(1), mm: 18.5, reporter: 'Zé', deviceCreatedAt: now });
+  await s().addRain({ date: day(1), mm: 4 }, 'somar');
+  await s().addRain({ date: day(6), mm: 22 }, 'somar');
+  await s().addRain({ date: day(9), mm: 0 }, 'somar');
+  await s().refreshReports();
+  console.info('Demonstração: link do caderno em', `${window.location.origin}/c/${token}?demo`);
+  return { store, notebook: be.notebook };
 }

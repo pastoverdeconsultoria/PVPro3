@@ -7,14 +7,15 @@ import '@fontsource-variable/space-grotesk';
 import './index.css';
 import { App } from './App';
 import { supabaseConfig } from './data/env';
-import { createSupabaseAuth, createSupabaseClient, createSupabaseRepo } from './data/supabaseRepo';
+import { createSupabaseAuth, createSupabaseClient, createSupabaseNotebook, createSupabaseRepo } from './data/supabaseRepo';
+import type { NotebookApi } from './data/types';
 import { AppProvider } from './state/AppContext';
 import { createAppStore, type AppStore } from './state/store';
 
 // As fontes vão no pacote (sem CDN) para o app abrir igual sem sinal.
 registerSW({ immediate: true });
 
-async function start(): Promise<AppStore | null> {
+async function start(): Promise<{ store: AppStore; notebook: NotebookApi } | null> {
   // Demonstração com dados inventados: só existe no `npm run dev`.
   if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('demo')) {
     return (await import('./data/demo')).demoBackend();
@@ -24,7 +25,7 @@ async function start(): Promise<AppStore | null> {
   const client = createSupabaseClient(config.url, config.key);
   const store = createAppStore({ repo: createSupabaseRepo(client), auth: createSupabaseAuth(client) });
   void store.getState().init();
-  return store;
+  return { store, notebook: createSupabaseNotebook(client) };
 }
 
 function ConfigMissing() {
@@ -42,11 +43,11 @@ function ConfigMissing() {
   );
 }
 
-void start().then((store) => {
+void start().then((app) => {
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
-      {store ? (
-        <AppProvider store={store}>
+      {app ? (
+        <AppProvider store={app.store} notebook={app.notebook}>
           <BrowserRouter>
             <App />
           </BrowserRouter>

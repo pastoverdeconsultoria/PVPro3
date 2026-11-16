@@ -30,3 +30,8 @@ export function todayLocal(now: Date = new Date()): IsoDate {
 export function formatDayMonth(d: IsoDate): string {
   return `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 }
+
+/** Soma dias a uma data pura ('AAAA-MM-DD'), sem depender do fuso do aparelho. */
+export function addDays(d: IsoDate, days: number): IsoDate {
+  return new Date(Date.parse(`${d}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
+}

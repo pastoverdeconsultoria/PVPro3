@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { Icon, type IconName } from './Icon';
 import { useOnline } from '../lib/useOnline';
@@ -23,6 +24,26 @@ export function Shell() {
   const staleSince = useApp((s) => s.staleSince);
   const loading = useApp((s) => s.loading);
   const refresh = useApp((s) => s.refresh);
+  const refreshReports = useApp((s) => s.refreshReports);
+  const farmId = useApp((s) => s.farmId);
+  const newReports = useApp((s) => s.data?.reports.reduce((n, r) => n + (r.status === 'novo' ? 1 : 0), 0) ?? 0);
+
+  // Confere se a equipe mandou relato novo: ao abrir, quando o sinal volta, quando o
+  // app volta para a frente e a cada 2 min. Só os relatos, não a fazenda inteira.
+  useEffect(() => {
+    if (!farmId) return;
+    const check = () => {
+      if (document.visibilityState === 'visible') void refreshReports();
+    };
+    window.addEventListener('online', check);
+    document.addEventListener('visibilitychange', check);
+    const timer = setInterval(check, 120_000);
+    return () => {
+      window.removeEventListener('online', check);
+      document.removeEventListener('visibilitychange', check);
+      clearInterval(timer);
+    };
+  }, [farmId, refreshReports]);
 
   return (
     <>
@@ -51,7 +72,14 @@ export function Shell() {
                     `${tabBase} ${isActive ? 'bg-lime font-semibold text-ink' : 'font-medium text-text'}`
                   }
                 >
-                  <Icon name={t.icon} />
+                  <span className="relative">
+                    <Icon name={t.icon} />
+                    {t.to === '/' && newReports ? (
+                      <span className="absolute -right-2.5 -top-1.5 min-w-[16px] rounded-full bg-warn px-1 text-center text-[10px] font-bold leading-4 text-ink" aria-label={`${newReports} ${newReports === 1 ? 'relato novo' : 'relatos novos'} no caderno`}>
+                        {newReports}
+                      </span>
+                    ) : null}
+                  </span>
                   {t.label}
                 </NavLink>
               ))}

@@ -3,13 +3,25 @@ import { useStore } from 'zustand';
 import { deriveFarm, type FarmView } from '../lib/farm/farmView';
 import { moduleViews, paddockModules, type ModuleView } from '../lib/farm/modules';
 import { todayLocal } from '../lib/lots/dates';
-import type { Module } from '../data/types';
+import type { Module, NotebookApi } from '../data/types';
 import type { AppState, AppStore } from './store';
 
 const StoreContext = createContext<AppStore | null>(null);
+const NotebookContext = createContext<NotebookApi | null>(null);
 
-export function AppProvider({ store, children }: { store: AppStore; children: ReactNode }) {
-  return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>;
+export function AppProvider({ store, notebook, children }: { store: AppStore; notebook: NotebookApi; children: ReactNode }) {
+  return (
+    <StoreContext.Provider value={store}>
+      <NotebookContext.Provider value={notebook}>{children}</NotebookContext.Provider>
+    </StoreContext.Provider>
+  );
+}
+
+/** Acesso do link público do caderno (sem login). */
+export function useNotebookApi(): NotebookApi {
+  const api = useContext(NotebookContext);
+  if (!api) throw new Error('AppProvider ausente.');
+  return api;
 }
 
 export function useApp<T>(selector: (s: AppState) => T): T {

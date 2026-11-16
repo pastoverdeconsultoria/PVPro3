@@ -98,7 +98,13 @@ describe('situação de hoje da fazenda', () => {
     expect(p01.instantUaHa).toBeNull();
     expect(p01.lastExit).toEqual({ date: '2026-11-13', source: 'historico' });
     expect(p01.restDays).toBe(2);
-    expect(p01.lastStay).toEqual({ lotId: l1.id, start: '2026-11-01', end: '2026-11-13', days: 12 });
+    expect(p01.lastPeriod).toMatchObject({ lotIds: [l1.id], start: '2026-11-01', end: '2026-11-13', days: 12, open: false });
+    // Ocorrida: 90 UA durante os 12 dias, sobre a área. Não muda com o descanso.
+    expect(p01.lastPeriod!.uaHa).toBeCloseTo(90 / p01.paddock.areaHa, 10);
+    // Global do ciclo: os mesmos 90 × 12 UA-dia, sobre os 15 dias desde a entrada (12 de pastejo, mais 13, 14 e 15 vazios).
+    expect(p01.cycleUaHa).toBeCloseTo((90 * 12) / p01.paddock.areaHa / 15, 10);
+    expect(p02.current).toMatchObject({ start: '2026-11-13', days: 3, open: true });
+    expect(p02.cycleUaHa).toBeNull();
   });
 
   it('sem histórico, o descanso usa a saída informada na abertura; sem nada, fica sem dado', () => {

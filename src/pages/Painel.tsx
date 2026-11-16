@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { MoveSheet } from '../components/LotSheets';
-import { locationText } from '../lib/farm/farmView';
+import { differs, locationText } from '../lib/farm/farmView';
 import type { ModuleView } from '../lib/farm/modules';
 import { gmdText, nf } from '../lib/format';
 import { formatDayMonth } from '../lib/lots/dates';
@@ -59,6 +59,11 @@ export function Painel() {
               ? `UA em pastejo ÷ área útil (${nf(t.grazingAreaHa, 1)} ha). Aparece quando houver lote cadastrado.`
               : `${nf(t.uaInPasture, 0)} UA em pastejo · ${nf(t.grazingAreaHa, 1)} ha úteis${t.uaOutside > 0.5 ? ` · ${nf(t.uaOutside, 0)} UA fora dos piquetes` : ''}`}
           </p>
+          {t.globalUaHa != null && t.globalUapHa != null && differs(t.globalUaHa, t.globalUapHa) ? (
+            <p className="m-0 mt-1.5 text-sm">
+              <b>{nf(t.globalUapHa, 2)} UA/ha de pasto</b>, descontado o que o suplemento substitui.
+            </p>
+          ) : null}
         </section>
 
         {tiles.map((x) => (

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { FarmMap, type MapShape } from '../components/FarmMap';
 import { MoveSheet } from '../components/LotSheets';
 import { Actions, ErrorText, Field, Sheet, useAction } from '../components/ui';
-import type { PaddockView } from '../lib/farm/farmView';
+import { differs, type PaddockView, type PeriodView } from '../lib/farm/farmView';
 import { SPECIES } from '../lib/farm/newFarm';
 import { MAP_LEGEND, paddockStatusText, paddockStyle } from '../lib/farm/paddockStyle';
 import { nf } from '../lib/format';
@@ -108,6 +108,13 @@ export function Mapa() {
   );
 }
 
+/** Lotação de um período em texto; mostra a versão "de pasto" só quando o suplemento muda o número. */
+function stocking(p: Pick<PeriodView, 'uaHa' | 'uapHa'>): string {
+  return `${nf(p.uaHa, 2)} UA/ha${differs(p.uaHa, p.uapHa) ? ` (${nf(p.uapHa, 2)} de pasto)` : ''}`;
+}
+
+const dias = (n: number) => `${n} ${n === 1 ? 'dia' : 'dias'}`;
+
 /**
  * Cartão do piquete tocado. Regra do Lucas: só diz se está ocupado e as últimas
  * informações. O acumulado do ano não entra aqui (fica na Análise).
@@ -141,6 +148,11 @@ function PaddockCard({ p, fv, canMove, onEdit, onMove }: { p: PaddockView; fv: F
               </li>
             ))}
           </ul>
+          {p.current ? (
+            <p className="k m-0 text-sm">
+              Ocorrida até agora: <b className="text-text">{stocking(p.current)}</b>, em {dias(p.current.days)} de pastejo.
+            </p>
+          ) : null}
         </>
       ) : (
         <div className="flex flex-col gap-1.5 text-sm">
@@ -156,10 +168,20 @@ function PaddockCard({ p, fv, canMove, onEdit, onMove }: { p: PaddockView; fv: F
           ) : (
             <p className="k m-0">Sem dado de saída: nenhuma movimentação registrada neste piquete.</p>
           )}
-          {p.lastStay ? (
-            <p className="k m-0">
-              Último pastejo: {fv.lotName(p.lastStay.lotId)}, de {formatDayMonth(p.lastStay.start)} a {formatDayMonth(p.lastStay.end)} ({p.lastStay.days} {p.lastStay.days === 1 ? 'dia' : 'dias'}).
-            </p>
+          {p.lastPeriod ? (
+            <>
+              <p className="k m-0">
+                Último pastejo: {p.lastPeriod.lotIds.map(fv.lotName).join(' e ')}, de {formatDayMonth(p.lastPeriod.start)} a {formatDayMonth(p.lastPeriod.end)} ({dias(p.lastPeriod.days)}).
+              </p>
+              <p className="m-0">
+                Lotação ocorrida: <b>{stocking(p.lastPeriod)}</b>
+              </p>
+              {p.cycleUaHa != null && p.cycleUapHa != null ? (
+                <p className="m-0">
+                  Global do ciclo: <b>{stocking({ uaHa: p.cycleUaHa, uapHa: p.cycleUapHa })}</b> <span className="k">(pastejo mais descanso até hoje)</span>
+                </p>
+              ) : null}
+            </>
           ) : null}
         </div>
       )}

@@ -39,5 +39,7 @@ export function paddockStyle(p: PaddockView): ShapeStyle {
   if (!p.paddock.isGrazing) return { fill: MAP_COLORS.off, text: '#9DB0A3', dashed: true, lines: [] };
   if (p.restDays == null) return { fill: MAP_COLORS.unknown, text: '#EEF3EC', lines: ['—', 'sem dado'] };
   const fill = p.restDays >= 14 ? MAP_COLORS.rest14 : p.restDays >= 7 ? MAP_COLORS.rest7 : MAP_COLORS.rest0;
-  return { fill, text: p.restDays >= 14 ? '#0B120E' : '#EEF3EC', lines: [`${p.restDays} d`, 'de descanso'] };
+  // Em descanso, a segunda linha é a lotação global do ciclo, como no simulador.
+  const second = p.cycleUaHa != null ? `global ${nf(p.cycleUaHa, 2)}` : 'de descanso';
+  return { fill, text: p.restDays >= 14 ? '#0B120E' : '#EEF3EC', lines: [`${p.restDays} d`, second] };
 }

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Icon } from '../components/Icon';
 import { ChangeSheet, HistorySheet, MoveSheet, NewLotSheet, WeighSheet } from '../components/LotSheets';
 import { ErrorText, useAction } from '../components/ui';
-import { locationText, type LotView } from '../lib/farm/farmView';
+import { differs, locationText, type LotView } from '../lib/farm/farmView';
 import { gmdText, nf } from '../lib/format';
 import { formatBr, formatDayMonth } from '../lib/lots/dates';
 import { useApp, useFarmView } from '../state/AppContext';
@@ -139,7 +139,11 @@ function LotCard({ l, where, onOpen }: { l: LotView; where: string; onOpen: (kin
           <dt className="k text-xs">GMD kg/dia</dt>
         </div>
       </dl>
-      {supplKg > 0 ? <p className="k m-0 text-xs">Suplemento: {nf(supplKg, 2)} kg por cabeça por dia.</p> : null}
+      {supplKg > 0 ? (
+        <p className="k m-0 text-xs">
+          Suplemento: {nf(supplKg, 2)} kg por cabeça por dia{differs(l.ua, l.uap) ? ` · ${nf(l.uap, 0)} UA de pasto` : ''}.
+        </p>
+      ) : null}
 
       <div className="mt-auto grid grid-cols-2 gap-2 pt-1 min-[400px]:grid-cols-4">
         <button type="button" className="btn btn-pri px-2" disabled={empty} onClick={() => onOpen('mover')}>

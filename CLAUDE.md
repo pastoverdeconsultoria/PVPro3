@@ -1,6 +1,6 @@
 # Sistema de gestão de pastagem por lotação ocorrida — guia para Claude Code
 
-Nome do sistema: **não definido** (Lucas descartou as sugestões feitas; usar "sistema" ou um nome provisório no repositório até ele decidir).
+Nome do sistema: **PVPro3** (definido pelo Lucas em 15 nov 2026). Repositório `pastoverdeconsultoria/PVPro3`, projeto Supabase e projeto Vercel com o mesmo nome. Apesar do nome, continua sendo um sistema independente do PV Pro, com banco próprio.
 
 ## O que é
 
@@ -148,7 +148,7 @@ Escuro com verde-limão. Variáveis do simulador: fundo `#0B120E`, card `#121C16
 4. Nada foi testado com fazenda real. Falta um cliente com 60 a 90 dias de movimentação e o KML dele.
 5. A versão mobile da projeção foi gerada, mas não foi inspecionada visualmente.
 6. Importação de histórico por planilha foi discutida e **descartada por ora**, porque os clientes não têm histórico. O caderno do vaqueiro é o caminho para o dado nascer.
-7. Nome do sistema indefinido.
+7. ~~Nome do sistema indefinido.~~ Definido: PVPro3.
 8. A estação Davis de uma fazenda cliente tem só ~15 dias de dado, não serve de teste histórico.
 
 ## Roteiro proposto

@@ -50,4 +50,42 @@
   .btn-pri {
     @apply border-lime bg-lime text-ink hover:border-lime;
   }
+
+  .btn-danger {
+    @apply border-warn/70 text-warn hover:border-warn;
+  }
+
+  .field {
+    @apply flex min-w-0 flex-col gap-1.5;
+  }
+
+  .label {
+    @apply text-[13px] font-medium text-muted;
+  }
+
+  /* 16 px no texto: abaixo disso o Android dá zoom na tela ao focar o campo. */
+  .in {
+    @apply min-h-[46px] w-full min-w-0 rounded-[12px] border border-line2 bg-bg px-3.5 text-[16px] text-text;
+    color-scheme: dark;
+  }
+
+  .in::placeholder {
+    @apply text-muted/60;
+  }
+
+  .chip {
+    @apply inline-flex min-h-[32px] items-center gap-1.5 rounded-full border border-line2 px-3 text-[13px] font-semibold text-text;
+  }
+
+  .chip-on {
+    @apply border-lime bg-lime text-ink;
+  }
+
+  .err {
+    @apply m-0 rounded-[12px] border border-warn/60 bg-warn/10 px-3.5 py-2.5 text-sm text-warn;
+  }
+
+  .note {
+    @apply m-0 rounded-[12px] border border-line bg-bg px-3.5 py-2.5 text-sm text-muted;
+  }
 }

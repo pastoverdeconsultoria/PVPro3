@@ -9,8 +9,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'Lotação',
-        short_name: 'Lotação',
+        name: 'PVPro3',
+        short_name: 'PVPro3',
         description: 'Gestão de pastagem por lotação ocorrida.',
         lang: 'pt-BR',
         start_url: '/',

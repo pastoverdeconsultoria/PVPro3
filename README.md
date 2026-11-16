@@ -1,4 +1,4 @@
-# Lotação (nome provisório)
+# PVPro3
 
 Sistema de gestão de pastagem por lotação ocorrida. Independente do PV Pro.
 

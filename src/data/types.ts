@@ -94,11 +94,13 @@ export interface RainRecord {
 
 export type ReportPatch = Partial<Pick<FieldReport, 'date' | 'mm' | 'lotId' | 'toPaddockId' | 'note'>>;
 
-/** O que o link público mostra: só nomes, para montar o formulário. */
+/** O que o link público mostra: o mínimo para quem relata reconhecer o lote e tocar no pasto certo. */
 export interface NotebookContext {
   farmName: string;
-  paddocks: { id: string; name: string }[];
-  lots: { id: string; name: string }[];
+  /** `outline`: contorno simplificado em [lng, lat], para o mapinha de toque. */
+  paddocks: { id: string; name: string; outline?: [number, number][] | null }[];
+  /** Só lotes com animais. `paddockId`: onde o lote está, contando relato ainda não revisado. */
+  lots: { id: string; name: string; heads?: number; paddockId?: string | null }[];
 }
 
 /** Relato como sai do aparelho do vaqueiro. */

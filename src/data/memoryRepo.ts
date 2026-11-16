@@ -1,3 +1,4 @@
+import { deriveLot, orderEvents } from '../lib/lots/deriveLot';
 import type { LotEvent } from '../lib/lots/types';
 import {
   OFFLINE_MESSAGE,
@@ -258,10 +259,32 @@ export function createMemoryBackend() {
       if (offline) throw new RepoError(OFFLINE_MESSAGE, true);
       const f = farmByToken(token);
       if (!f) return null;
+      // Mesma regra da função do banco: contorno com no máximo ~40 pontos; lote só
+      // com animais; "onde está" é o relato pendente mais recente, ou o histórico.
+      const outline = (ring: [number, number][]) => {
+        const step = Math.max(1, Math.ceil(ring.length / 40));
+        return ring.filter((_, i) => i % step === 0);
+      };
       return {
         farmName: f.name,
-        paddocks: paddocks.filter((p) => p.farmId === f.id).sort((a, b) => a.sort - b.sort).map((p) => ({ id: p.id, name: p.name })),
-        lots: lots.filter((l) => l.farmId === f.id && !l.deletedAt).map((l) => ({ id: l.id, name: l.name })),
+        paddocks: paddocks
+          .filter((p) => p.farmId === f.id)
+          .sort((a, b) => a.sort - b.sort)
+          .map((p) => ({ id: p.id, name: p.name, outline: outline(p.geom.coordinates[0]) })),
+        lots: lots
+          .filter((l) => l.farmId === f.id && !l.deletedAt)
+          .map((l) => {
+            const mine = events.filter((e) => e.lotId === l.id);
+            const heads = deriveLot(l.id, mine).current?.heads ?? 0;
+            const last = orderEvents(mine).filter((e) => e.type === 'piquete_entrada' || e.type === 'piquete_saida').pop();
+            const official = last?.type === 'piquete_entrada' ? last.paddockId : null;
+            const pending = reports
+              .filter((r) => r.lotId === l.id && r.kind === 'mudanca' && r.status === 'novo')
+              .sort((a, b) => (a.date === b.date ? (a.createdAt < b.createdAt ? 1 : -1) : a.date < b.date ? 1 : -1))[0];
+            return { id: l.id, name: l.name, heads, paddockId: pending?.toPaddockId ?? official };
+          })
+          .filter((l) => l.heads > 0)
+          .sort((a, b) => a.name.localeCompare(b.name)),
       };
     },
     async submit(token, report) {

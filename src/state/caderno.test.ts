@@ -54,7 +54,8 @@ describe('fila do caderno no aparelho', () => {
     const c = await be.notebook.context(token);
     expect(c!.farmName).toBe('Fazenda Exemplo');
     expect(c!.paddocks).toHaveLength(13);
-    expect(c!.lots).toEqual([{ id: lotId('Lote 1'), name: 'Lote 1' }]);
+    expect(c!.lots).toEqual([{ id: lotId('Lote 1'), name: 'Lote 1', heads: 90, paddockId: pid('P01') }]);
+    expect(c!.paddocks.every((p) => (p.outline?.length ?? 0) >= 3)).toBe(true);
     expect(await be.notebook.context('x'.repeat(64))).toBeNull();
   });
 

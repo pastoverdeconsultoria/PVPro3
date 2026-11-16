@@ -172,7 +172,11 @@ export function notebookReportToPayload(r: NotebookReport): Row {
 export function jsonToNotebookContext(j: Row | null | string): NotebookContext | null {
   const v = typeof j === 'string' ? (JSON.parse(j) as Row | null) : j;
   if (!v) return null;
-  return { farmName: v.farm_name, paddocks: v.paddocks ?? [], lots: v.lots ?? [] };
+  return {
+    farmName: v.farm_name,
+    paddocks: ((v.paddocks ?? []) as Row[]).map((p) => ({ id: p.id, name: p.name, outline: p.outline ?? null })),
+    lots: ((v.lots ?? []) as Row[]).map((l) => ({ id: l.id, name: l.name, heads: Number(l.heads ?? 0), paddockId: l.paddock_id ?? null })),
+  };
 }
 
 /** Registro no formato que a função `record_lot_events` do banco recebe. `seq` não vai: é do servidor. */

@@ -52,48 +52,101 @@ beforeEach(async () => {
 });
 
 describe('link do vaqueiro', () => {
-  it('abre sem login, anota a mudança de gado e ela chega para o consultor', async () => {
+  /** Primeira vez no aparelho: a página pergunta o nome uma vez só. */
+  async function sayName(user: ReturnType<typeof userEvent.setup>, name = 'Zé') {
+    await user.type(await screen.findByLabelText('Seu nome'), name);
+    await user.click(screen.getByRole('button', { name: 'PRONTO ✓' }));
+  }
+
+  it('abre sem login, pergunta o nome uma vez e mostra as duas ações com figura', async () => {
     const user = userEvent.setup();
     await s().signOut();
-    open(`/c/${token}`);
+    const first = open(`/c/${token}`);
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Fazenda Exemplo' })).toBeTruthy();
     // Nada de tela de entrada, nem de navegação do sistema.
     expect(screen.queryByLabelText('Senha')).toBeNull();
     expect(screen.queryByRole('navigation')).toBeNull();
 
-    await user.click(screen.getByRole('button', { name: 'Anotar' }));
-    expect(screen.getByRole('alert').textContent).toBe('Escolha o lote.');
+    expect(screen.getByText('Qual seu nome?')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'PRONTO ✓' }) as HTMLButtonElement).disabled).toBe(true);
+    await sayName(user);
 
-    await user.selectOptions(screen.getByLabelText('Lote'), 'Lote 1');
-    await user.selectOptions(screen.getByLabelText('Foi para o piquete'), 'P02');
-    await user.click(screen.getByRole('button', { name: 'Ontem' }));
-    await user.type(screen.getByLabelText('Seu nome (opcional)'), 'Zé');
-    await user.click(screen.getByRole('button', { name: 'Anotar' }));
+    expect(screen.getByText('O que aconteceu?')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Choveu' }).textContent).toBe('🌧️CHOVEU');
+    expect(screen.getByRole('button', { name: 'Mudei o gado' }).textContent).toBe('🐮MUDEI O GADO');
+    expect(screen.getByText(/Zé ·/)).toBeTruthy();
 
-    const enviados = await screen.findByRole('region', { name: 'Enviados' });
-    expect(within(enviados).getByText(/Lote 1 foi para P02/)).toBeTruthy();
-    expect(screen.queryByRole('region', { name: 'Aguardando sinal' })).toBeNull();
-
-    await be.signInAs('ana@exemplo.test');
-    const reports = await be.repo.listReports(s().farmId ?? exampleFarmId());
-    expect(reports).toMatchObject([{ kind: 'mudanca', date: addDays(today(), -1), reporter: 'Zé', status: 'novo' }]);
+    // Da segunda vez em diante, o nome já está guardado no aparelho.
+    first.unmount();
+    open(`/c/${token}`);
+    expect(await screen.findByText('O que aconteceu?')).toBeTruthy();
+    expect(screen.queryByText('Qual seu nome?')).toBeNull();
   });
 
-  it('sem sinal guarda no aparelho, mostra que está esperando e envia quando o sinal volta', async () => {
+  it('mudança de gado: escolhe o lote, toca no pasto, diz quando foi e confirma', async () => {
+    const user = userEvent.setup();
+    open(`/c/${token}`);
+    await sayName(user);
+    await user.click(screen.getByRole('button', { name: 'Mudei o gado' }));
+
+    // O lote aparece com onde está e quantas cabeças tem, para ser reconhecido.
+    const lote = screen.getByRole('button', { name: /^Lote 1/ });
+    expect(lote.textContent).toBe('🐂 Lote 1está no P01 · 90 cabeças');
+    expect(screen.queryByText('2. Pra qual pasto foi?')).toBeNull();
+    await user.click(lote);
+
+    const pastos = screen.getByRole('group', { name: 'Pra qual pasto foi?' });
+    // O pasto onde o lote já está não é oferecido como destino.
+    expect(within(pastos).queryByRole('button', { name: 'P01' })).toBeNull();
+    expect(within(pastos).getAllByRole('button')).toHaveLength(12);
+    // O mapinha mostra os mesmos pastos para tocar.
+    expect(within(screen.getByRole('group', { name: 'Toque no pasto' })).getAllByRole('button')).toHaveLength(13);
+    expect(screen.queryByRole('button', { name: 'CONFIRMAR ✓' })).toBeNull();
+    await user.click(within(pastos).getByRole('button', { name: 'P02' }));
+
+    await user.click(screen.getByRole('button', { name: /Ontem/ }));
+    expect(screen.getByText('Lote 1 ➜ P02')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'CONFIRMAR ✓' }));
+
+    expect(await screen.findByText('Enviado!')).toBeTruthy();
+    expect(await be.repo.listReports(s().farmId!)).toMatchObject([
+      { kind: 'mudanca', date: addDays(today(), -1), reporter: 'Zé', lotId: lotId('Lote 1'), toPaddockId: pid('P02'), status: 'novo' },
+    ]);
+
+    // De volta ao início: o relato aparece como enviado, e o lote já consta no pasto novo.
+    await user.click(screen.getByRole('button', { name: 'REGISTRAR OUTRA COISA' }));
+    expect(within(screen.getByRole('region', { name: 'Enviados' })).getByText(/Lote 1 ➜ P02/)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Mudei o gado' }));
+    expect(screen.getByRole('button', { name: /^Lote 1/ }).textContent).toContain('está no P02');
+  });
+
+  it('chuva: digita no teclado grande, sem sinal guarda no aparelho e envia quando o sinal volta', async () => {
     const user = userEvent.setup();
     const { unmount } = open(`/c/${token}`);
-    await screen.findByRole('heading', { level: 1, name: 'Fazenda Exemplo' });
+    await sayName(user);
 
     setOnline(false);
     expect(screen.getByRole('status').textContent).toBe('Sem sinal');
-    await user.click(screen.getByRole('button', { name: 'Chuva' }));
-    await user.type(screen.getByLabelText('Quantos milímetros choveu'), '12,5');
-    await user.click(screen.getByRole('button', { name: 'Anotar' }));
+    await user.click(screen.getByRole('button', { name: 'Choveu' }));
 
-    const fila = await screen.findByRole('region', { name: 'Aguardando sinal' });
-    expect(within(fila).getByText(/Chuva: 12,5 mm/)).toBeTruthy();
-    expect(screen.getByText(/Vai ser enviado quando houver sinal/)).toBeTruthy();
+    const visor = screen.getByRole('status', { name: 'Milímetros de chuva' });
+    const enviar = screen.getByRole('button', { name: 'ENVIAR ✓' }) as HTMLButtonElement;
+    expect(visor.textContent).toBe('0mm');
+    expect(enviar.disabled).toBe(true);
+    for (const k of ['1', '2', 'Vírgula', '5']) await user.click(screen.getByRole('button', { name: k }));
+    expect(visor.textContent).toBe('12,5mm');
+    // O teclado não deixa passar de uma casa depois da vírgula, e apagar volta um passo.
+    await user.click(screen.getByRole('button', { name: '9' }));
+    expect(visor.textContent).toBe('12,5mm');
+    await user.click(screen.getByRole('button', { name: 'Apagar' }));
+    await user.click(screen.getByRole('button', { name: '5' }));
+    expect(visor.textContent).toBe('12,5mm');
+    await user.click(enviar);
+
+    expect(await screen.findByText('Guardado!')).toBeTruthy();
+    expect(screen.getByText(/Vai enviar sozinho quando pegar internet/)).toBeTruthy();
+    expect(screen.getByText('📥 1 esperando sinal pra enviar')).toBeTruthy();
     // Nada chegou ao consultor ainda (o estado dele em memória não mudou).
     expect(s().data!.reports).toEqual([]);
 
@@ -101,39 +154,47 @@ describe('link do vaqueiro', () => {
     unmount();
     open(`/c/${token}`);
     expect(await screen.findByRole('heading', { level: 1, name: 'Fazenda Exemplo' })).toBeTruthy();
-    expect(within(screen.getByRole('region', { name: 'Aguardando sinal' })).getByText(/Chuva: 12,5 mm/)).toBeTruthy();
+    expect(within(screen.getByRole('region', { name: 'Esperando sinal' })).getByText(/12,5 mm/)).toBeTruthy();
 
     setOnline(true);
-    await waitFor(() => expect(screen.queryByRole('region', { name: 'Aguardando sinal' })).toBeNull());
-    expect(within(screen.getByRole('region', { name: 'Enviados' })).getByText(/Chuva: 12,5 mm/)).toBeTruthy();
-    expect(await be.repo.listReports(s().farmId!)).toMatchObject([{ kind: 'chuva', mm: 12.5, date: today() }]);
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Esperando sinal' })).toBeNull());
+    expect(within(screen.getByRole('region', { name: 'Enviados' })).getByText(/12,5 mm/)).toBeTruthy();
+    expect(await be.repo.listReports(s().farmId!)).toMatchObject([{ kind: 'chuva', mm: 12.5, date: today(), reporter: 'Zé' }]);
   });
 
-  it('link errado avisa que não vale; sem sinal na primeira vez explica o que fazer', async () => {
+  it('link errado avisa com figura; sem sinal na primeira vez explica o que fazer', async () => {
     const first = open(`/c/${'f'.repeat(64)}`);
-    expect(await screen.findByText('Este link não vale mais')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Anotar' })).toBeNull();
+    expect(await screen.findByText('Link não funciona')).toBeTruthy();
+    expect(screen.getByText('Peça o link novo pro responsável.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Choveu' })).toBeNull();
     first.unmount();
 
     localStorage.clear();
     be.setOffline(true);
     open(`/c/${token}`);
-    expect(await screen.findByText(/ainda não guardou a lista de piquetes e lotes/)).toBeTruthy();
+    expect(await screen.findByText(/Abra esta página uma vez com internet/)).toBeTruthy();
   });
 
-  it('recusa data futura e chuva sem número, sem pôr nada na fila', async () => {
+  it('não deixa enviar data futura, e avisa quando o servidor não aceita o relato', async () => {
     const user = userEvent.setup();
     open(`/c/${token}`);
-    await screen.findByRole('heading', { level: 1, name: 'Fazenda Exemplo' });
-    await user.click(screen.getByRole('button', { name: 'Chuva' }));
-    await user.click(screen.getByRole('button', { name: 'Anotar' }));
-    expect(screen.getByRole('alert').textContent).toMatch(/quantos milímetros/);
-    await user.type(screen.getByLabelText('Quantos milímetros choveu'), '5');
-    await user.click(screen.getByRole('button', { name: 'Outro dia' }));
+    await sayName(user);
+    await user.click(screen.getByRole('button', { name: 'Choveu' }));
+    await user.click(screen.getByRole('button', { name: '8' }));
+    const enviar = screen.getByRole('button', { name: 'ENVIAR ✓' }) as HTMLButtonElement;
+    await user.click(screen.getByRole('button', { name: /Outro/ }));
+    expect(enviar.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('Data'), { target: { value: addDays(today(), 2) } });
-    await user.click(screen.getByRole('button', { name: 'Anotar' }));
-    expect(screen.getByRole('alert').textContent).toBe('A data não pode ser depois de hoje.');
+    expect(enviar.disabled).toBe(true);
     expect(be.calls).not.toContain('notebook.submit');
+    fireEvent.change(screen.getByLabelText('Data'), { target: { value: addDays(today(), -3) } });
+    expect(enviar.disabled).toBe(false);
+
+    // O consultor troca o link enquanto o vaqueiro está com a página aberta.
+    await s().rotateShareToken();
+    await user.click(enviar);
+    expect(await screen.findByText('Não deu certo')).toBeTruthy();
+    expect(screen.getByText('Este link do caderno não vale mais. Peça o link novo.')).toBeTruthy();
   });
 });
 
@@ -243,7 +304,3 @@ describe('consultor', () => {
     await waitFor(() => expect(rainOn(s().data!.rain, today())).toBe(12));
   });
 });
-
-function exampleFarmId(): string {
-  throw new Error('fazenda fechada: o teste precisa do id antes de sair da conta');
-}

@@ -84,14 +84,46 @@ beforeAll(async () => {
 }, 60_000);
 
 describe('link público (anônimo)', () => {
-  it('com o token certo recebe só nomes de piquetes e lotes', async () => {
+  it('com o token certo recebe os pastos com contorno e os lotes com cabeças e onde estão', async () => {
     await as(db, null, async () => {
       const c = await context(token);
       expect(c).toEqual({
         farmName: 'Fazenda da Ana',
-        paddocks: faz.paddocks.map((p) => ({ id: p.id, name: p.name })),
-        lots: [{ id: lote.id, name: 'Lote 1' }],
+        paddocks: faz.paddocks.map((p) => ({ id: p.id, name: p.name, outline: p.geom.coordinates[0] })),
+        lots: [{ id: lote.id, name: 'Lote 1', heads: 100, paddockId: faz.paddocks[0].id }],
       });
+      // Nada de área, peso, categoria ou token na resposta.
+      const raw = JSON.stringify((await db.query<R>('select public.notebook_context($1) as c', [token])).rows[0].c);
+      expect(raw).not.toMatch(/area|weight|category|share_token|farm_id/);
+    });
+  });
+
+  it('contorno grande vem simplificado, e lote sem animais não aparece', async () => {
+    const grande = newFarm('Fazenda grande', ['G01']);
+    // Polígono com 400 vértices, como os de um KML desenhado à mão.
+    const ring = Array.from({ length: 400 }, (_, i) => {
+      const a = (i / 400) * 2 * Math.PI;
+      return [-40 + 0.01 * Math.cos(a), -15 + 0.01 * Math.sin(a)] as [number, number];
+    });
+    grande.paddocks[0].geom = { type: 'Polygon', coordinates: [[...ring, ring[0]]] };
+    const vazio: Lot = { id: uuid(), farmId: grande.farm.id, name: 'Vendido', deletedAt: null };
+    let t = '';
+    await as(db, ana, async () => {
+      await createFarm(grande);
+      const base = { lotId: vazio.id, date: await dayOffset(-20) };
+      const events: LotEvent[] = [
+        { ...base, id: uuid(), type: 'inicio', heads: 30, weightKg: 300, category: 'Recria' },
+        { ...base, id: uuid(), type: 'animais_saida', heads: 30, reason: 'venda' },
+      ];
+      await db.query('select public.create_lot($1::jsonb, $2::jsonb)', [JSON.stringify(lotToPayload(vazio)), JSON.stringify(events.map((e) => eventToPayload(grande.farm.id, e)))]);
+      t = (await db.query<R>('select share_token from public.farms where id = $1', [grande.farm.id])).rows[0].share_token;
+    });
+    await as(db, null, async () => {
+      const c = (await context(t))!;
+      expect(c.paddocks[0].outline!.length).toBeGreaterThanOrEqual(30);
+      expect(c.paddocks[0].outline!.length).toBeLessThanOrEqual(41);
+      expect(c.paddocks[0].outline![0]).toEqual(ring[0]);
+      expect(c.lots).toEqual([]);
     });
   });
 
@@ -123,6 +155,10 @@ describe('link público (anônimo)', () => {
       expect(await submit(token, mudanca)).toBe('ok');
       expect(await submit(token, chuva)).toBe('ja_recebido');
       expect(await submit(token, mudanca)).toBe('ja_recebido');
+    });
+    // Enquanto o consultor não revisa, o link já mostra o lote no pasto que a equipe informou.
+    await as(db, null, async () => {
+      expect((await context(token))!.lots).toEqual([{ id: lote.id, name: 'Lote 1', heads: 100, paddockId: faz.paddocks[1].id }]);
     });
     await as(db, ana, async () => {
       const all = await reports();

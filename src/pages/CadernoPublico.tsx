@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { ErrorText, Field } from '../components/ui';
-import type { NotebookContext, NotebookReport, ReportKind } from '../data/types';
-import { nf, parseNum } from '../lib/format';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { FarmMap, type MapShape } from '../components/FarmMap';
+import type { NotebookContext, NotebookReport } from '../data/types';
+import { nf } from '../lib/format';
 import { addDays, formatDayMonth, todayLocal } from '../lib/lots/dates';
 import {
   dropQueued,
@@ -17,21 +17,28 @@ import { useNotebookApi } from '../state/AppContext';
 
 /** Intervalo entre tentativas de envio com a página aberta (CLAUDE.md: a cada 2 min). */
 export const SYNC_INTERVAL_MS = 120_000;
+/** A lista de pastos e lotes traz o mapinha; não precisa ser baixada a cada tentativa de envio. */
+const CONTEXT_MAX_AGE_MS = 15 * 60_000;
 
-type DateMode = 'hoje' | 'ontem' | 'outra';
+type Screen = 'name' | 'home' | 'rain' | 'cattle' | 'sending' | 'sent' | 'saved' | 'rejected';
+type When = 'hoje' | 'ontem' | 'outro';
 
-/** Um relato em uma frase, para as listas de pendentes e enviados. */
+/** Um relato em uma frase curta. */
 function reportText(r: NotebookReport, ctx: NotebookContext | null): string {
-  if (r.kind === 'chuva') return `Chuva: ${nf(r.mm ?? 0, 1)} mm`;
+  if (r.kind === 'chuva') return `🌧️ ${nf(r.mm ?? 0, 1)} mm`;
   const lot = ctx?.lots.find((l) => l.id === r.lotId)?.name ?? 'lote';
-  const paddock = ctx?.paddocks.find((p) => p.id === r.toPaddockId)?.name ?? 'piquete';
-  return `${lot} foi para ${paddock}`;
+  const paddock = ctx?.paddocks.find((p) => p.id === r.toPaddockId)?.name ?? 'pasto';
+  return `🐮 ${lot} ➜ ${paddock}`;
 }
 
 /**
- * Caderno da equipe: a página que o vaqueiro abre pelo link, sem login. Só chuva
- * e mudança de gado. É ação de campo: vai no pacote principal e funciona sem
- * sinal, guardando o relato no aparelho até conseguir enviar.
+ * Caderno da fazenda: a página que o vaqueiro abre pelo link, sem login. Feita
+ * para quem lê pouco: duas ações com figura grande (choveu, mudei o gado), um
+ * passo por vez, números num teclado grande e o pasto escolhido tocando no mapa.
+ * Mesmo desenho do caderno do PV Pro, a pedido do Lucas (16 nov 2026).
+ *
+ * É ação de campo: vai no pacote principal e funciona sem sinal. O relato é
+ * guardado no aparelho antes de qualquer tentativa de envio.
  */
 export function CadernoPublico({ token }: { token: string }) {
   const api = useNotebookApi();
@@ -40,8 +47,9 @@ export function CadernoPublico({ token }: { token: string }) {
   const [invalid, setInvalid] = useState(false);
   const [checked, setChecked] = useState(false);
   const stateRef = useRef(state);
-  const running = useRef(false);
+  const running = useRef<Promise<void> | null>(null);
   const again = useRef(false);
+  const contextAt = useRef(0);
 
   const commit = useCallback(
     (next: NotebookState) => {
@@ -52,45 +60,56 @@ export function CadernoPublico({ token }: { token: string }) {
     [token],
   );
 
-  /** Atualiza a lista de piquetes e lotes e tenta enviar o que está na fila. */
-  const sync = useCallback(async () => {
-    if (running.current) {
-      again.current = true;
-      return;
-    }
-    running.current = true;
-    try {
-      do {
-        again.current = false;
-        const ctx = await refreshContext(stateRef.current, api, token);
-        if (ctx.invalid) setInvalid(true);
-        else if (!ctx.offline) {
-          setInvalid(false);
-          commit({ ...stateRef.current, context: ctx.state.context });
-        }
-        setChecked(true);
+  /** Envia o que está na fila e, se preciso, atualiza a lista de pastos e lotes. */
+  const sync = useCallback(
+    (refresh: boolean): Promise<void> => {
+      if (running.current) {
+        again.current = true;
+        return running.current;
+      }
+      const loop = (async () => {
+        let wantContext = refresh;
+        do {
+          again.current = false;
+          const before = stateRef.current;
+          const after = await syncQueue(before, api, token);
+          // Relato feito enquanto o envio rodava entra no fim da fila, sem se perder.
+          const added = stateRef.current.queue.filter((q) => !before.queue.some((b) => b.report.id === q.report.id));
+          commit({ ...stateRef.current, queue: [...after.queue, ...added], sent: after.sent });
+          const delivered = after.sent.length !== before.sent.length || after.sent[0]?.id !== before.sent[0]?.id;
 
-        const before = stateRef.current;
-        const after = await syncQueue(before, api, token);
-        // Relato feito enquanto o envio rodava entra no fim da fila, sem se perder.
-        const added = stateRef.current.queue.filter((q) => !before.queue.some((b) => b.report.id === q.report.id));
-        commit({ ...stateRef.current, queue: [...after.queue, ...added], sent: after.sent });
-      } while (again.current);
-    } finally {
-      running.current = false;
-    }
-  }, [api, token, commit]);
+          const stale = Date.now() - contextAt.current > CONTEXT_MAX_AGE_MS;
+          if (wantContext || delivered || stale || !stateRef.current.context) {
+            const ctx = await refreshContext(stateRef.current, api, token);
+            if (ctx.invalid) setInvalid(true);
+            else if (!ctx.offline) {
+              setInvalid(false);
+              contextAt.current = Date.now();
+              commit({ ...stateRef.current, context: ctx.state.context });
+            }
+            wantContext = false;
+          }
+          setChecked(true);
+        } while (again.current);
+      })().finally(() => {
+        running.current = null;
+      });
+      running.current = loop;
+      return loop;
+    },
+    [api, token, commit],
+  );
 
   // Envia ao abrir, quando o sinal volta, quando a página volta para a frente e a cada 2 min.
   useEffect(() => {
-    void sync();
+    void sync(true);
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void sync();
+      if (document.visibilityState === 'visible') void sync(false);
     };
-    const onOnline = () => void sync();
+    const onOnline = () => void sync(true);
     window.addEventListener('online', onOnline);
     document.addEventListener('visibilitychange', onVisible);
-    const timer = setInterval(() => void sync(), SYNC_INTERVAL_MS);
+    const timer = setInterval(() => void sync(false), SYNC_INTERVAL_MS);
     return () => {
       window.removeEventListener('online', onOnline);
       document.removeEventListener('visibilitychange', onVisible);
@@ -98,228 +117,472 @@ export function CadernoPublico({ token }: { token: string }) {
     };
   }, [sync]);
 
-  const [kind, setKind] = useState<ReportKind>('mudanca');
-  const [dateMode, setDateMode] = useState<DateMode>('hoje');
-  const [customDate, setCustomDate] = useState('');
+  const [screen, setScreen] = useState<Screen>(state.reporter ? 'home' : 'name');
+  const [name, setName] = useState(state.reporter);
   const [mm, setMm] = useState('');
+  const [when, setWhen] = useState<When>('hoje');
+  const [otherDay, setOtherDay] = useState('');
   const [lotId, setLotId] = useState('');
-  const [paddockId, setPaddockId] = useState('');
-  const [note, setNote] = useState('');
-  const [reporter, setReporter] = useState(state.reporter);
-  const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null);
+  const [destId, setDestId] = useState('');
+  const [refusal, setRefusal] = useState('');
 
   const ctx = state.context;
   const pending = pendingCount(state);
   const rejected = state.queue.filter((q) => q.state === 'recusado');
+  const today = todayLocal();
+  const date = when === 'hoje' ? today : when === 'ontem' ? addDays(today, -1) : otherDay;
+  const dateOk = !!date && date <= today;
 
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    setDone(null);
-    const today = todayLocal();
-    const date = dateMode === 'hoje' ? today : dateMode === 'ontem' ? addDays(today, -1) : customDate;
-    if (!date) return setError('Escolha a data.');
-    if (date > today) return setError('A data não pode ser depois de hoje.');
+  /** Onde o lote está: o que este aparelho anotou e ainda não enviou vale mais que a lista recebida. */
+  const whereIs = useCallback(
+    (id: string): string | null => {
+      const mine = [...state.queue].reverse().find((q) => q.state === 'pendente' && q.report.kind === 'mudanca' && q.report.lotId === id);
+      return mine?.report.toPaddockId ?? ctx?.lots.find((l) => l.id === id)?.paddockId ?? null;
+    },
+    [state.queue, ctx],
+  );
+  const paddockName = (id: string | null | undefined) => ctx?.paddocks.find((p) => p.id === id)?.name;
+  const lot = ctx?.lots.find((l) => l.id === lotId);
+  const here = lotId ? whereIs(lotId) : null;
 
-    const base = {
-      id: crypto.randomUUID(),
-      date,
-      deviceCreatedAt: new Date().toISOString(),
-      ...(reporter.trim() ? { reporter: reporter.trim() } : {}),
-      ...(note.trim() ? { note: note.trim() } : {}),
-    };
-    let report: NotebookReport;
-    if (kind === 'chuva') {
-      const value = parseNum(mm);
-      if (!(value >= 0) || value > 500) return setError('Informe quantos milímetros choveu (0 a 500).');
-      report = { ...base, kind: 'chuva', mm: value };
-    } else {
-      if (!lotId) return setError('Escolha o lote.');
-      if (!paddockId) return setError('Escolha o piquete para onde o lote foi.');
-      report = { ...base, kind: 'mudanca', lotId, toPaddockId: paddockId };
-    }
+  const shapes: MapShape[] = useMemo(
+    () => (ctx?.paddocks ?? []).filter((p) => (p.outline?.length ?? 0) >= 3).map((p) => ({ id: p.id, name: p.name, rings: [p.outline!] })),
+    [ctx?.paddocks],
+  );
 
-    setError(null);
-    // Primeiro guarda no aparelho; só depois tenta enviar.
-    commit(enqueue(stateRef.current, report));
+  const home = () => {
+    setScreen('home');
     setMm('');
     setLotId('');
-    setPaddockId('');
-    setNote('');
-    setDateMode('hoje');
-    setDone(`Anotado: ${reportText(report, ctx)}, em ${formatDayMonth(date)}.`);
-    void sync();
+    setDestId('');
+    setWhen('hoje');
+    setOtherDay('');
   };
 
+  const send = async (report: NotebookReport) => {
+    // Primeiro guarda no aparelho; só depois tenta enviar.
+    commit(enqueue(stateRef.current, report));
+    if (!navigator.onLine) {
+      setScreen('saved');
+      void sync(false);
+      return;
+    }
+    setScreen('sending');
+    await sync(false);
+    const left = stateRef.current.queue.find((q) => q.report.id === report.id);
+    if (!left) setScreen('sent');
+    else if (left.state === 'recusado') {
+      setRefusal(left.error ?? 'O relato não foi aceito.');
+      commit(dropQueued(stateRef.current, report.id));
+      setScreen('rejected');
+    } else setScreen('saved');
+  };
+
+  const base = () => ({
+    id: crypto.randomUUID(),
+    date,
+    deviceCreatedAt: new Date().toISOString(),
+    ...(state.reporter ? { reporter: state.reporter } : {}),
+  });
+  const rain = Number(mm.replace(',', '.'));
+  const rainOk = rain > 0 && rain <= 500 && dateOk;
+
+  // ── telas que não dependem da lista da fazenda ──
+  if (invalid) {
+    return (
+      <Frame farm="" online={online} pending={pending}>
+        <Message emoji="🔗" title="Link não funciona" text="Peça o link novo pro responsável." />
+      </Frame>
+    );
+  }
+  if (!ctx) {
+    return (
+      <Frame farm="" online={online} pending={pending}>
+        {checked ? (
+          <Message emoji="📵" title="Sem sinal" text="Abra esta página uma vez com internet. Depois ela funciona sem sinal." />
+        ) : (
+          <p className="k m-0 py-16 text-center text-lg" role="status">
+            Carregando…
+          </p>
+        )}
+      </Frame>
+    );
+  }
+
   return (
-    <main className="mx-auto flex min-h-[100dvh] max-w-[520px] flex-col gap-4 px-3.5 pb-10 pt-4">
-      <header className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="eyebrow">Caderno da equipe</span>
-          <h1 className="big m-0 truncate text-[26px]">{ctx?.farmName ?? 'Fazenda'}</h1>
+    <Frame farm={ctx.farmName} online={online} pending={pending}>
+      {/* ── nome (só na primeira vez) ── */}
+      {screen === 'name' ? (
+        <div className="flex flex-col gap-4 pt-6">
+          <Emoji size="text-6xl">👋</Emoji>
+          <div className="text-center">
+            <h2 className="m-0 font-display text-[26px] font-bold">Qual seu nome?</h2>
+            <p className="k m-0 mt-1">Só precisa uma vez.</p>
+          </div>
+          <input
+            className="in min-h-[60px] text-center text-[22px]"
+            aria-label="Seu nome"
+            placeholder="Ex: João"
+            autoComplete="given-name"
+            maxLength={40}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <BigButton
+            disabled={!name.trim()}
+            onClick={() => {
+              commit({ ...stateRef.current, reporter: name.trim() });
+              setScreen('home');
+            }}
+          >
+            PRONTO ✓
+          </BigButton>
         </div>
-        <span
-          role="status"
-          className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-[13px] font-semibold ${
-            online ? 'border-line text-muted' : 'border-warn text-warn'
-          }`}
-        >
-          <i aria-hidden="true" className={`h-2 w-2 rounded-full ${online ? 'bg-ramp-3' : 'bg-warn'}`} />
-          {online ? 'Online' : 'Sem sinal'}
-        </span>
-      </header>
+      ) : null}
 
-      {invalid ? (
-        <section className="card flex flex-col gap-2" role="alert">
-          <h2 className="h2">Este link não vale mais</h2>
-          <p className="k m-0">O link do caderno foi trocado. Peça o link novo ao consultor.</p>
-        </section>
-      ) : !ctx ? (
-        <section className="card flex flex-col gap-2" role="status">
-          {checked ? (
-            <>
-              <h2 className="h2">Sem sinal</h2>
-              <p className="k m-0">Este aparelho ainda não guardou a lista de piquetes e lotes. Abra esta página uma vez com internet; depois ela funciona sem sinal.</p>
-            </>
-          ) : (
-            <p className="k m-0">Abrindo o caderno…</p>
-          )}
-        </section>
-      ) : (
-        <form className="card flex flex-col gap-3.5" onSubmit={submit} noValidate>
-          <div className="flex gap-2" role="group" aria-label="O que aconteceu">
-            {(['mudanca', 'chuva'] as const).map((k) => (
-              <button
-                key={k}
-                type="button"
-                className={`chip min-h-[48px] flex-1 justify-center whitespace-nowrap !px-2 text-[14px] ${kind === k ? 'chip-on' : ''}`}
-                aria-pressed={kind === k}
-                onClick={() => {
-                  setKind(k);
-                  setError(null);
-                }}
-              >
-                {k === 'mudanca' ? 'Mudança de gado' : 'Chuva'}
-              </button>
-            ))}
-          </div>
-
-          <div className="field">
-            <span className="label">Quando foi</span>
-            <div className="flex gap-2" role="group" aria-label="Quando foi">
-              {(['hoje', 'ontem', 'outra'] as const).map((m) => (
-                <button key={m} type="button" className={`chip min-h-[44px] flex-1 justify-center ${dateMode === m ? 'chip-on' : ''}`} aria-pressed={dateMode === m} onClick={() => setDateMode(m)}>
-                  {m === 'hoje' ? 'Hoje' : m === 'ontem' ? 'Ontem' : 'Outro dia'}
-                </button>
-              ))}
-            </div>
-            {dateMode === 'outra' ? (
-              <input className="in" type="date" aria-label="Data" max={todayLocal()} value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
-            ) : null}
-          </div>
-
-          {kind === 'chuva' ? (
-            <Field label="Quantos milímetros choveu" hint="Leitura do pluviômetro. Se olhou e não choveu, ponha 0.">
-              {(id) => <input id={id} className="in" inputMode="decimal" value={mm} onChange={(e) => setMm(e.target.value)} />}
-            </Field>
-          ) : (
-            <>
-              <Field label="Lote">
-                {(id) => (
-                  <select id={id} className="in" value={lotId} onChange={(e) => setLotId(e.target.value)}>
-                    <option value="">Escolha…</option>
-                    {ctx.lots.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </Field>
-              <Field label="Foi para o piquete">
-                {(id) => (
-                  <select id={id} className="in" value={paddockId} onChange={(e) => setPaddockId(e.target.value)}>
-                    <option value="">Escolha…</option>
-                    {ctx.paddocks.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </Field>
-              {!ctx.lots.length ? <p className="note">Ainda não há lote cadastrado nesta fazenda. Avise o consultor.</p> : null}
-            </>
-          )}
-
-          <Field label="Observação (opcional)">{(id) => <input id={id} className="in" value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} />}</Field>
-          <Field label="Seu nome (opcional)">{(id) => <input id={id} className="in" value={reporter} maxLength={60} autoComplete="name" onChange={(e) => setReporter(e.target.value)} />}</Field>
-
-          <ErrorText>{error}</ErrorText>
-          <button type="submit" className="btn btn-pri min-h-[52px] text-[16px]">
-            Anotar
+      {/* ── início: duas ações com figura grande ── */}
+      {screen === 'home' ? (
+        <div className="flex flex-col gap-4">
+          <h2 className="m-0 text-center font-display text-[22px] font-bold">O que aconteceu?</h2>
+          <button type="button" aria-label="Choveu" onClick={() => setScreen('rain')} className="flex cursor-pointer flex-col items-center gap-1 rounded-[28px] border-4 border-proj bg-proj/10 py-8 active:scale-[0.98]">
+            <Emoji size="text-7xl">🌧️</Emoji>
+            <span className="font-display text-[30px] font-extrabold text-proj">CHOVEU</span>
           </button>
-          {done ? (
-            <p className="note" role="status">
-              {done} {pending ? 'Vai ser enviado quando houver sinal.' : 'Enviado ao consultor.'}
-            </p>
+          <button type="button" aria-label="Mudei o gado" onClick={() => setScreen('cattle')} className="flex cursor-pointer flex-col items-center gap-1 rounded-[28px] border-4 border-lime bg-lime/10 py-8 active:scale-[0.98]">
+            <Emoji size="text-7xl">🐮</Emoji>
+            <span className="font-display text-[30px] font-extrabold text-lime">MUDEI O GADO</span>
+          </button>
+          <p className="k m-0 text-center">
+            {state.reporter} ·{' '}
+            <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-muted underline" onClick={() => setScreen('name')}>
+              trocar nome
+            </button>
+          </p>
+
+          {rejected.length ? (
+            <section className="card flex flex-col gap-2 border-warn/60" aria-label="Não aceitos">
+              <h3 className="m-0 font-display text-[17px] font-bold text-warn">⚠️ Não foi aceito ({rejected.length})</h3>
+              <ul className="m-0 flex list-none flex-col p-0">
+                {rejected.map((q) => (
+                  <li key={q.report.id} className="flex items-center justify-between gap-3 border-t border-line py-2 first:border-t-0">
+                    <span className="flex min-w-0 flex-col text-sm">
+                      <span>
+                        {formatDayMonth(q.report.date)} · {reportText(q.report, ctx)}
+                      </span>
+                      <span className="text-warn">{q.error}</span>
+                    </span>
+                    <button type="button" className="btn shrink-0 px-3 text-[13px]" onClick={() => commit(dropQueued(stateRef.current, q.report.id))}>
+                      Apagar
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
           ) : null}
-        </form>
-      )}
 
-      {pending ? (
-        <section className="card flex flex-col gap-2 border-warn/60" aria-label="Aguardando sinal">
-          <h2 className="h2">Aguardando sinal ({pending})</h2>
-          <ul className="m-0 flex list-none flex-col gap-1.5 p-0 text-sm">
-            {state.queue
-              .filter((q) => q.state === 'pendente')
-              .map((q) => (
-                <li key={q.report.id}>
-                  {formatDayMonth(q.report.date)} · {reportText(q.report, ctx)}
-                </li>
-              ))}
-          </ul>
-          <p className="k m-0 text-xs">Está guardado neste aparelho e vai sozinho quando o sinal voltar. Pode fechar a página.</p>
-          <button type="button" className="btn self-start" onClick={() => void sync()}>
-            Tentar enviar agora
+          {pending ? (
+            <section className="card flex flex-col gap-2 border-warn/60" aria-label="Esperando sinal">
+              <h3 className="m-0 font-display text-[17px] font-bold">📥 Esperando sinal ({pending})</h3>
+              <ul className="m-0 flex list-none flex-col gap-1 p-0 text-sm">
+                {state.queue
+                  .filter((q) => q.state === 'pendente')
+                  .map((q) => (
+                    <li key={q.report.id}>
+                      {formatDayMonth(q.report.date)} · {reportText(q.report, ctx)}
+                    </li>
+                  ))}
+              </ul>
+              <button type="button" className="btn self-start" onClick={() => void sync(false)}>
+                Tentar enviar agora
+              </button>
+            </section>
+          ) : null}
+
+          {state.sent.length ? (
+            <section className="card flex flex-col gap-2" aria-label="Enviados">
+              <h3 className="m-0 font-display text-[17px] font-bold">✅ Já enviados</h3>
+              <ul className="m-0 flex list-none flex-col gap-1 p-0 text-sm text-muted">
+                {state.sent.slice(0, 5).map((r) => (
+                  <li key={r.id}>
+                    {formatDayMonth(r.date)} · {reportText(r, ctx)}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* ── chuva ── */}
+      {screen === 'rain' ? (
+        <div className="flex flex-col gap-4">
+          <Back onClick={home} />
+          <h2 className="m-0 text-center font-display text-[26px] font-bold">🌧️ Quanto choveu?</h2>
+          <div className="rounded-[24px] border-2 border-proj bg-proj/10 py-4 text-center" role="status" aria-label="Milímetros de chuva">
+            <span className="big text-[60px] text-proj">{mm || '0'}</span>
+            <span className="ml-2 text-xl text-proj">mm</span>
+          </div>
+          <NumPad value={mm} onChange={setMm} />
+          <WhenPicker when={when} onWhen={setWhen} otherDay={otherDay} onOtherDay={setOtherDay} today={today} />
+          <BigButton tone="blue" disabled={!rainOk} onClick={() => void send({ ...base(), kind: 'chuva', mm: rain })}>
+            ENVIAR ✓
+          </BigButton>
+        </div>
+      ) : null}
+
+      {/* ── gado ── */}
+      {screen === 'cattle' ? (
+        <div className="flex flex-col gap-3.5">
+          <Back onClick={home} />
+          <h2 className="m-0 text-center font-display text-[26px] font-bold">🐮 Mudança de gado</h2>
+
+          {!ctx.lots.length ? (
+            <Message emoji="🐂" title="Sem lote cadastrado" text="Avise o responsável." />
+          ) : (
+            <>
+              <Step n={1}>Qual lote mudou?</Step>
+              <div className="flex flex-col gap-2" role="group" aria-label="Qual lote mudou?">
+                {ctx.lots.map((l) => {
+                  const on = l.id === lotId;
+                  const at = paddockName(whereIs(l.id));
+                  return (
+                    <button
+                      key={l.id}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => {
+                        setLotId(l.id);
+                        setDestId('');
+                      }}
+                      className={`flex cursor-pointer flex-col gap-0.5 rounded-[18px] border-2 px-4 py-3.5 text-left text-text ${on ? 'border-lime bg-lime/10' : 'border-line2 bg-card'}`}
+                    >
+                      <span className="text-[19px] font-bold">
+                        <Emoji inline>🐂</Emoji> {l.name}
+                      </span>
+                      <span className="k text-sm">
+                        {at ? (
+                          <>
+                            está no <b className="text-text">{at}</b>
+                          </>
+                        ) : (
+                          'sem pasto marcado'
+                        )}
+                        {l.heads ? ` · ${nf(l.heads)} cabeças` : ''}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {lot ? (
+            <>
+              <Step n={2}>Pra qual pasto foi?</Step>
+              {shapes.length ? (
+                <div className="rounded-[18px] border border-line bg-card p-2">
+                  <FarmMap
+                    label="Toque no pasto"
+                    shapes={shapes}
+                    selectedId={destId || null}
+                    onSelect={(id) => {
+                      if (id !== here) setDestId(id);
+                    }}
+                    styleOf={(id) =>
+                      id === destId
+                        ? { fill: '#C6F24E', text: '#0B120E' }
+                        : id === here
+                          ? { fill: '#18211C', text: '#9DB0A3', dashed: true }
+                          : { fill: '#2F6B4A', text: '#EEF3EC' }
+                    }
+                  />
+                </div>
+              ) : null}
+              <div className="grid grid-cols-3 gap-2" role="group" aria-label="Pra qual pasto foi?">
+                {ctx.paddocks
+                  .filter((p) => p.id !== here)
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      aria-pressed={p.id === destId}
+                      onClick={() => setDestId(p.id)}
+                      className={`min-h-[52px] cursor-pointer rounded-[14px] border-2 px-1 text-[16px] font-bold ${p.id === destId ? 'border-lime bg-lime text-ink' : 'border-line2 bg-card text-text'}`}
+                    >
+                      {p.name}
+                    </button>
+                  ))}
+              </div>
+            </>
+          ) : null}
+
+          {lot && destId ? (
+            <>
+              <Step n={3}>Quando foi?</Step>
+              <WhenPicker when={when} onWhen={setWhen} otherDay={otherDay} onOtherDay={setOtherDay} today={today} />
+              <p className="m-0 mt-1 text-center font-display text-[22px] font-bold" role="status">
+                {lot.name} ➜ {paddockName(destId)}
+              </p>
+              <BigButton disabled={!dateOk} onClick={() => void send({ ...base(), kind: 'mudanca', lotId: lot.id, toPaddockId: destId })}>
+                CONFIRMAR ✓
+              </BigButton>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* ── resultado ── */}
+      {screen === 'sending' ? (
+        <p className="k m-0 py-16 text-center text-lg" role="status">
+          Enviando…
+        </p>
+      ) : null}
+      {screen === 'sent' ? (
+        <Result emoji="✅" title="Enviado!" text="Informações enviadas. Obrigado!" onAgain={home} />
+      ) : null}
+      {screen === 'saved' ? (
+        <Result emoji="📥" title="Guardado!" text="Sem sinal agora. Vai enviar sozinho quando pegar internet. Pode fechar." onAgain={home} />
+      ) : null}
+      {screen === 'rejected' ? <Result emoji="⚠️" title="Não deu certo" text={refusal} onAgain={home} /> : null}
+    </Frame>
+  );
+}
+
+function Emoji({ children, size = '', inline = false }: { children: string; size?: string; inline?: boolean }) {
+  return (
+    <span aria-hidden="true" className={`${inline ? '' : 'block text-center'} leading-none ${size}`}>
+      {children}
+    </span>
+  );
+}
+
+function Frame({ farm, online, pending, children }: { farm: string; online: boolean; pending: number; children: ReactNode }) {
+  return (
+    <div className="min-h-[100dvh]">
+      <header className="border-b-4 border-lime bg-card px-4 pb-3.5 pt-4">
+        <div className="mx-auto flex max-w-[480px] items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="eyebrow">Caderno da fazenda</span>
+            {farm ? <h1 className="big m-0 truncate text-[26px]">{farm}</h1> : null}
+          </div>
+          <span role="status" className={`mt-1 inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-[13px] font-semibold ${online ? 'border-line text-muted' : 'border-warn text-warn'}`}>
+            <i aria-hidden="true" className={`h-2 w-2 rounded-full ${online ? 'bg-ramp-3' : 'bg-warn'}`} />
+            {online ? 'Online' : 'Sem sinal'}
+          </span>
+        </div>
+        {pending ? (
+          <div className="mx-auto mt-2 max-w-[480px]">
+            <span className="inline-block rounded-full bg-warn px-3 py-1 text-[13px] font-bold text-ink">📥 {pending} esperando sinal pra enviar</span>
+          </div>
+        ) : null}
+      </header>
+      <main className="mx-auto max-w-[480px] px-4 pb-10 pt-5">{children}</main>
+    </div>
+  );
+}
+
+function Message({ emoji, title, text }: { emoji: string; title: string; text: string }) {
+  return (
+    <section className="card mt-6 flex flex-col gap-2 text-center" role="alert">
+      <Emoji size="text-5xl">{emoji}</Emoji>
+      <h2 className="m-0 font-display text-[22px] font-bold">{title}</h2>
+      <p className="k m-0 text-base">{text}</p>
+    </section>
+  );
+}
+
+function Result({ emoji, title, text, onAgain }: { emoji: string; title: string; text: string; onAgain: () => void }) {
+  return (
+    <div className="flex flex-col gap-4 pt-8 text-center" role="status">
+      <Emoji size="text-7xl">{emoji}</Emoji>
+      <h2 className="m-0 font-display text-[28px] font-bold">{title}</h2>
+      <p className="m-0 px-2 text-base text-muted">{text}</p>
+      <BigButton onClick={onAgain}>REGISTRAR OUTRA COISA</BigButton>
+    </div>
+  );
+}
+
+function BigButton({ children, onClick, disabled, tone = 'lime' }: { children: ReactNode; onClick: () => void; disabled?: boolean; tone?: 'lime' | 'blue' }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`mt-1 min-h-[62px] w-full cursor-pointer rounded-[20px] border-0 font-display text-[22px] font-extrabold text-ink disabled:cursor-not-allowed disabled:opacity-40 ${tone === 'blue' ? 'bg-proj' : 'bg-lime'}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Back({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="min-h-[44px] cursor-pointer self-start border-0 bg-transparent p-0 text-base font-medium text-muted">
+      ← Voltar
+    </button>
+  );
+}
+
+function Step({ n, children }: { n: number; children: ReactNode }) {
+  return (
+    <h3 className="m-0 mt-1 text-[18px] font-bold">
+      {n}. {children}
+    </h3>
+  );
+}
+
+/** Hoje, ontem ou outro dia: o vaqueiro costuma avisar depois, então a data é sempre perguntada. */
+function WhenPicker({ when, onWhen, otherDay, onOtherDay, today }: { when: When; onWhen: (w: When) => void; otherDay: string; onOtherDay: (d: string) => void; today: string }) {
+  const label: Record<When, string> = { hoje: '☀️ Hoje', ontem: '🌙 Ontem', outro: '📅 Outro' };
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-3 gap-2" role="group" aria-label="Quando foi">
+        {(['hoje', 'ontem', 'outro'] as const).map((w) => (
+          <button
+            key={w}
+            type="button"
+            aria-pressed={when === w}
+            onClick={() => onWhen(w)}
+            className={`min-h-[54px] cursor-pointer rounded-[16px] border-2 px-1 text-[16px] font-bold ${when === w ? 'border-lime bg-lime text-ink' : 'border-line2 bg-card text-text'}`}
+          >
+            {label[w]}
           </button>
-        </section>
+        ))}
+      </div>
+      {when === 'outro' ? (
+        <input className="in min-h-[54px] text-center text-[18px]" type="date" aria-label="Data" max={today} value={otherDay} onChange={(e) => onOtherDay(e.target.value)} />
       ) : null}
+    </div>
+  );
+}
 
-      {rejected.length ? (
-        <section className="card flex flex-col gap-2 border-warn/60" aria-label="Não aceitos">
-          <h2 className="h2 text-warn">Não aceitos ({rejected.length})</h2>
-          <ul className="m-0 flex list-none flex-col p-0">
-            {rejected.map((q) => (
-              <li key={q.report.id} className="flex items-center justify-between gap-3 border-t border-line py-2 first:border-t-0">
-                <span className="flex min-w-0 flex-col text-sm">
-                  <span>
-                    {formatDayMonth(q.report.date)} · {reportText(q.report, ctx)}
-                  </span>
-                  <span className="text-warn">{q.error}</span>
-                </span>
-                <button type="button" className="btn shrink-0 px-3 text-[13px]" onClick={() => commit(dropQueued(stateRef.current, q.report.id))}>
-                  Apagar
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {state.sent.length ? (
-        <section className="card flex flex-col gap-2" aria-label="Enviados">
-          <h2 className="h2">Enviados</h2>
-          <ul className="m-0 flex list-none flex-col gap-1.5 p-0 text-sm text-muted">
-            {state.sent.map((r) => (
-              <li key={r.id}>
-                {formatDayMonth(r.date)} · {reportText(r, ctx)}
-              </li>
-            ))}
-          </ul>
-          <p className="k m-0 text-xs">O consultor confere e lança. Se anotou errado, avise ele.</p>
-        </section>
-      ) : null}
-    </main>
+/** Teclado numérico grande, sem abrir o teclado do celular. */
+function NumPad({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '0', '⌫'];
+  const press = (k: string) => {
+    if (k === '⌫') return onChange(value.slice(0, -1));
+    if (k === ',') {
+      if (value.includes(',') || value === '') return;
+      return onChange(`${value},`);
+    }
+    // Até três algarismos antes da vírgula e um depois (0,1 a 500 mm).
+    const [int, dec] = value.split(',');
+    if (dec !== undefined ? dec.length >= 1 : int.length >= 3) return;
+    onChange(value + k);
+  };
+  return (
+    <div className="grid grid-cols-3 gap-2" role="group" aria-label="Teclado numérico">
+      {keys.map((k) => (
+        <button
+          key={k}
+          type="button"
+          aria-label={k === '⌫' ? 'Apagar' : k === ',' ? 'Vírgula' : k}
+          onClick={() => press(k)}
+          className="min-h-[58px] cursor-pointer rounded-[16px] border border-line2 bg-card font-display text-[26px] font-bold text-text active:bg-line"
+        >
+          {k}
+        </button>
+      ))}
+    </div>
   );
 }

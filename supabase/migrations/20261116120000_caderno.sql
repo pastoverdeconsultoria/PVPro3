@@ -130,7 +130,15 @@ grant update (deleted_at) on public.rain_records to authenticated;
 -- ---------------------------------------------------------------------------
 
 -- Lista de piquetes e lotes para o formulário do caderno. Devolve null se o
--- link não vale (token errado ou trocado). Não devolve área, cabeças nem peso.
+-- link não vale (token errado ou trocado).
+--
+-- Para quem relata reconhecer o lote e tocar no pasto certo, vem junto:
+--   * de cada piquete, o contorno simplificado (no máximo ~40 pontos), para o
+--     mapinha de toque. Sem área.
+--   * de cada lote com animais, as cabeças e onde ele está. "Onde está" é o
+--     destino do relato de mudança mais recente ainda não revisado; sem relato
+--     pendente, é a última entrada em piquete do histórico oficial.
+-- Não devolve peso, categoria, área nem nada de outra fazenda.
 create function public.notebook_context(p_token text)
 returns jsonb
 language plpgsql
@@ -151,12 +159,48 @@ begin
   return jsonb_build_object(
     'farm_name', v_farm.name,
     'paddocks', coalesce((
-      select jsonb_agg(jsonb_build_object('id', p.id, 'name', p.name) order by p.sort, p.name)
+      select jsonb_agg(
+        jsonb_build_object(
+          'id', p.id,
+          'name', p.name,
+          'outline', (
+            select jsonb_agg(r.pt order by r.ord)
+            from jsonb_array_elements(p.geom -> 'coordinates' -> 0) with ordinality as r (pt, ord)
+            where (r.ord - 1) % greatest(1, ceil(jsonb_array_length(p.geom -> 'coordinates' -> 0) / 40.0)::integer) = 0
+          )
+        )
+        order by p.sort, p.name
+      )
       from public.paddocks p where p.farm_id = v_farm.id and p.deleted_at is null
     ), '[]'::jsonb),
     'lots', coalesce((
-      select jsonb_agg(jsonb_build_object('id', l.id, 'name', l.name) order by l.name)
-      from public.lots l where l.farm_id = v_farm.id and l.deleted_at is null
+      select jsonb_agg(
+        jsonb_build_object('id', l.id, 'name', l.name, 'heads', h.heads, 'paddock_id', coalesce(pend.paddock_id, loc.paddock_id))
+        order by l.name
+      )
+      from public.lots l
+      cross join lateral (
+        select coalesce(sum(case
+          when e.type in ('inicio', 'animais_entrada', 'transf_in') then e.heads
+          when e.type in ('animais_saida', 'transf_out') then -e.heads
+          else 0 end), 0)::integer as heads
+        from public.lot_events e where e.lot_id = l.id and e.deleted_at is null
+      ) h
+      left join lateral (
+        select case when e.type = 'piquete_entrada' then e.paddock_id end as paddock_id
+        from public.lot_events e
+        where e.lot_id = l.id and e.deleted_at is null and e.type in ('piquete_entrada', 'piquete_saida')
+        order by e.event_date desc, e.seq desc
+        limit 1
+      ) loc on true
+      left join lateral (
+        select r.to_paddock_id as paddock_id
+        from public.field_reports r
+        where r.lot_id = l.id and r.kind = 'mudanca' and r.status = 'novo' and r.deleted_at is null
+        order by r.report_date desc, r.created_at desc
+        limit 1
+      ) pend on true
+      where l.farm_id = v_farm.id and l.deleted_at is null and h.heads > 0
     ), '[]'::jsonb)
   );
 end;

@@ -21,6 +21,9 @@ const AREA_UTIL = exampleNewFarm()
 let be: MemoryBackend;
 let store: AppStore;
 
+/** A abertura de fazenda é tela sob demanda: a primeira carga pode passar de 1 s. */
+const LAZY_WAIT = { timeout: 20_000 };
+
 function open(path = '/') {
   return render(
     <AppProvider store={store}>
@@ -94,7 +97,7 @@ describe('abertura de fazenda pelo KML', () => {
     await store.getState().init();
     open('/fazendas/nova');
 
-    await user.type(await screen.findByLabelText('Nome da fazenda'), 'Fazenda Teste');
+    await user.type(await screen.findByLabelText('Nome da fazenda', undefined, LAZY_WAIT), 'Fazenda Teste');
     const file = new File([exampleKml()], 'fazenda.kml', { type: 'application/vnd.google-earth.kml+xml' });
     await user.upload(screen.getByLabelText('Arquivo KML ou KMZ'), file);
 
@@ -120,7 +123,7 @@ describe('abertura de fazenda pelo KML', () => {
     await be.signInAs('ana@exemplo.test');
     await store.getState().init();
     open('/fazendas/nova');
-    await user.type(await screen.findByLabelText('Nome da fazenda'), 'X');
+    await user.type(await screen.findByLabelText('Nome da fazenda', undefined, LAZY_WAIT), 'X');
     await user.upload(screen.getByLabelText('Arquivo KML ou KMZ'), new File(['isto não é um mapa'], 'nota.kml'));
     expect((await screen.findByRole('alert')).textContent).toBe('Arquivo KML inválido.');
     await user.click(screen.getByRole('button', { name: 'Abrir fazenda' }));
@@ -271,7 +274,7 @@ describe('rebanho, mapa e painel', () => {
     fireEvent.change(within(pesar).getByLabelText('Data da pesagem'), { target: { value: daysAgo(0) } });
     await user.click(within(pesar).getByRole('button', { name: 'Gravar pesagem' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(within(screen.getByRole('region', { name: 'Lote 1' })).getByText('+0,500')).toBeTruthy();
+    expect(within(screen.getByRole('region', { name: 'Lote 1' })).getByText('+0,50')).toBeTruthy();
 
     await user.click(within(screen.getByRole('region', { name: 'Lote 1' })).getByRole('button', { name: 'Histórico' }));
     const hist = screen.getByRole('dialog', { name: 'Histórico de Lote 1' });

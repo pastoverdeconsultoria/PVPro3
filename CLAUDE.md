@@ -202,12 +202,19 @@ Aprovado pelo Lucas como plano. **Aprovar o plano não foi ordem para codar**: a
 
 **Pronto quando:** o Lucas abre uma fazenda real pelo KML no Android, as áreas batem com as conhecidas (até 1%), monta os módulos, sai e entra de novo, e um segundo usuário sem vínculo não enxerga nada. Testes verdes e versão publicada.
 
-### Falta para começar
+### Estado da etapa 1 (16 nov 2026)
 
-- Resposta sobre a regra de autorização de código.
-- Um KML ou KMZ real de cliente para testar a importação.
-- Pasta do projeto e nome provisório do repositório.
-- Contas Supabase e Vercel criadas pelo Lucas. Sugestão: plano gratuito no desenvolvimento, Pro antes de entrar dado de cliente.
+O código da etapa 1 está escrito e testado (ver `README.md`, seções Estrutura e Testes). Em 15 nov 2026 o Lucas autorizou com "Eu quero o app funcionando. Faça todo o código pra isso acontecer"; isso valeu para a etapa 1 inteira. Para as etapas seguintes, perguntar de novo.
+
+O que ainda não foi feito ou conferido:
+
+- A migração `supabase/migrations/20261115120000_base.sql` precisa ser rodada pelo Lucas no SQL Editor do projeto Supabase `pvpro3`, e as variáveis `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` precisam ser criadas na Vercel.
+- A ligação com o Supabase real (`src/data/supabaseRepo.ts`) nunca rodou contra um projeto de verdade. As regras de acesso foram provadas num Postgres local (PGlite), não no Supabase.
+- O critério "pronto quando" (Lucas abre fazenda real no Android, áreas batem, segundo usuário não enxerga nada) depende dele.
+- Decidido na implementação, sem perguntar ao Lucas, e pode ser revisto: a lotação global da fazenda usa só o gado dentro de piquete de pastejo (como o simulador mostra "UA em pastejo"); o cartão do piquete mostra a lotação instantânea e o último período, mas a ocorrida e a global do ciclo ficaram para a etapa 3; o GMD usa só registros de pesagem (o peso do cadastro não conta, a menos que marcado como peso de balança); transferência entre lotes não tem tela.
+- Sem sinal o app abre e mostra a última cópia salva, mas não grava. A fila offline é da etapa 2.
+
+O KML real usado para testar a importação fica fora do repositório, por decisão do Lucas. Nenhum nome de fazenda real entra no repositório, que é público.
 
 ## Achados da revisão do simulador (Claude, 15 nov 2026, não decididos)
 

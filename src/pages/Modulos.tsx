@@ -173,8 +173,8 @@ function ModuleSheet({ fv, current, onClose }: { fv: FarmScreenData; current: Mo
                 setMRef(String(M_REF[c]));
               }}
             >
-              <option value="extensiva">Extensiva (M 40)</option>
-              <option value="adubada">Adubada (M 105)</option>
+              <option value="extensiva">Extensiva</option>
+              <option value="adubada">Adubada</option>
             </select>
           )}
         </Field>

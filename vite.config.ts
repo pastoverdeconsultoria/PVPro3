@@ -38,5 +38,8 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}'],
     setupFiles: ['src/test/setup.ts'],
+    // Os testes de tela digitam e clicam de verdade; em máquina carregada passam de 5 s.
+    testTimeout: 30_000,
+    hookTimeout: 60_000,
   },
 });

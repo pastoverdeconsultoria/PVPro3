@@ -5,7 +5,7 @@ import { MoveSheet } from '../components/LotSheets';
 import { locationText } from '../lib/farm/farmView';
 import type { ModuleView } from '../lib/farm/modules';
 import { gmdText, nf } from '../lib/format';
-import { formatBr } from '../lib/lots/dates';
+import { formatDayMonth } from '../lib/lots/dates';
 import { useFarmView } from '../state/AppContext';
 
 export function Painel() {
@@ -116,7 +116,7 @@ export function Painel() {
                       <span className="k font-sans font-normal"> · {nf(l.heads)} cab. · {nf(l.ua, 0)} UA</span>
                     </span>
                     <span className={`text-[13px] ${inPaddock ? 'text-muted' : l.heads > 0 ? 'text-warn' : 'text-muted'}`}>
-                      {locationText(l, fv.paddockName, formatBr)}
+                      {locationText(l, fv.paddockName, formatDayMonth)}
                       {p?.instantUaHa != null ? ` · ${nf(p.instantUaHa, 2)} UA/ha · dia ${p.dayOfUse}` : ''}
                     </span>
                   </span>

@@ -10,10 +10,10 @@ export function parseNum(text: string): number {
   return Number(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t);
 }
 
-/** GMD com sinal e três casas; valor desprezível vira zero sem sinal. */
+/** GMD com sinal e duas casas; valor desprezível vira zero sem sinal. */
 export function gmdText(kgDay: number): string {
-  if (Math.abs(kgDay) < 0.0005) return '0,000';
-  return `${kgDay > 0 ? '+' : '−'}${nf(Math.abs(kgDay), 3)}`;
+  if (Math.abs(kgDay) < 0.005) return '0,00';
+  return `${kgDay > 0 ? '+' : '−'}${nf(Math.abs(kgDay), 2)}`;
 }
 
 /** Data e hora curtas de um instante ISO, no relógio do aparelho. */

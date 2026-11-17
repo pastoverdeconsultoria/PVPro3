@@ -23,18 +23,22 @@ interface Props {
   shapes: readonly MapShape[];
   styleOf: (id: string) => ShapeStyle;
   points?: readonly { lat: number; lon: number }[];
+  /** Posição do aparelho (GPS), desenhada por cima de tudo. */
+  me?: { lat: number; lon: number } | null;
   selectedId?: string | null;
   onSelect?: (id: string) => void;
   label: string;
 }
 
 const BG = '#0B120E';
+// Lista vazia fixa: uma nova a cada desenho faria o mapa ser recalculado sem necessidade.
+const NO_POINTS: readonly { lat: number; lon: number }[] = [];
 
 /**
  * Mapa dos piquetes em SVG, sem imagem de satélite: abre igual sem sinal. Os
  * polígonos são projetados em metros em torno do centro da fazenda, norte para cima.
  */
-export function FarmMap({ shapes, styleOf, points = [], selectedId, onSelect, label }: Props) {
+export function FarmMap({ shapes, styleOf, points = NO_POINTS, me, selectedId, onSelect, label }: Props) {
   const geo = useMemo(() => {
     const all: LngLat[] = shapes.flatMap((s) => s.rings[0] ?? []);
     if (!all.length) return null;
@@ -83,6 +87,7 @@ export function FarmMap({ shapes, styleOf, points = [], selectedId, onSelect, la
     return {
       items,
       dots: points.map((p) => xy([p.lon, p.lat])),
+      xy,
       box: { x: minX - pad, y: minY - pad, w: w + 2 * pad, h: h + 2 * pad },
     };
   }, [shapes, points]);
@@ -237,6 +242,17 @@ export function FarmMap({ shapes, styleOf, points = [], selectedId, onSelect, la
       {geo.dots.map(([x, y], i) => (
         <circle key={i} cx={x} cy={y} r={unit * 0.009} fill="#6FA8FF" stroke={BG} strokeWidth={unit * 0.003} pointerEvents="none" />
       ))}
+      {me ? (
+        (() => {
+          const [x, y] = geo.xy([me.lon, me.lat]);
+          return (
+            <g pointerEvents="none" aria-label="Você está aqui" role="img">
+              <circle cx={x} cy={y} r={unit * 0.034} fill="#FFFFFF" opacity={0.25} />
+              <circle cx={x} cy={y} r={unit * 0.017} fill="#2F7BFF" stroke="#FFFFFF" strokeWidth={unit * 0.006} />
+            </g>
+          );
+        })()
+      ) : null}
     </svg>
     </div>
   );

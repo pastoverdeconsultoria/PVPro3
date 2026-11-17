@@ -12,6 +12,8 @@ import {
   syncQueue,
   type NotebookState,
 } from '../lib/notebook/queue';
+import { pointInPolygon } from '../lib/geo';
+import { geoProblem, useGeolocation } from '../lib/useGeolocation';
 import { useOnline } from '../lib/useOnline';
 import { useNotebookApi } from '../state/AppContext';
 
@@ -150,7 +152,16 @@ export function CadernoPublico({ token }: { token: string }) {
     [ctx?.paddocks],
   );
 
+  // GPS: no passo "pra qual pasto foi", o aparelho pode dizer em que pasto a pessoa está.
+  const [locating, setLocating] = useState(false);
+  const gps = useGeolocation(locating && screen === 'cattle');
+  const herePaddock = useMemo(() => {
+    if (!ctx || gps.lat == null || gps.lon == null) return null;
+    return ctx.paddocks.find((p) => (p.outline?.length ?? 0) >= 3 && pointInPolygon([gps.lon!, gps.lat!], [p.outline!])) ?? null;
+  }, [ctx, gps.lat, gps.lon]);
+
   const home = () => {
+    setLocating(false);
     setScreen('home');
     setMm('');
     setLotId('');
@@ -385,6 +396,7 @@ export function CadernoPublico({ token }: { token: string }) {
                     label="Toque no pasto"
                     shapes={shapes}
                     selectedId={destId || null}
+                    me={gps.status === 'ok' && gps.lat != null && gps.lon != null ? { lat: gps.lat, lon: gps.lon } : null}
                     onSelect={(id) => {
                       if (id !== here) setDestId(id);
                     }}
@@ -396,6 +408,29 @@ export function CadernoPublico({ token }: { token: string }) {
                           : { fill: '#2F6B4A', text: '#EEF3EC' }
                     }
                   />
+                </div>
+              ) : null}
+              {shapes.length ? (
+                <div className="flex flex-col gap-2">
+                  {!locating ? (
+                    <button type="button" className="min-h-[54px] cursor-pointer rounded-[16px] border-2 border-proj bg-proj/10 px-3 text-[17px] font-bold text-proj" onClick={() => setLocating(true)}>
+                      📍 Estou nesse pasto agora
+                    </button>
+                  ) : gps.status === 'buscando' ? (
+                    <p className="note text-center" role="status">📍 Procurando o GPS…</p>
+                  ) : gps.status === 'ok' ? (
+                    herePaddock && herePaddock.id !== here ? (
+                      <button type="button" className="min-h-[54px] cursor-pointer rounded-[16px] border-2 border-lime bg-lime/10 px-3 text-[17px] font-bold text-lime" onClick={() => setDestId(herePaddock.id)}>
+                        📍 Você está no {herePaddock.name}. Tocar para escolher
+                      </button>
+                    ) : (
+                      <p className="note text-center" role="status">
+                        📍 {herePaddock ? `Você está no ${herePaddock.name}, onde o lote já estava.` : 'Você está fora dos pastos do mapa. Escolha no mapa ou nos botões.'}
+                      </p>
+                    )
+                  ) : (
+                    <p className="err" role="alert">{geoProblem(gps.status)}</p>
+                  )}
                 </div>
               ) : null}
               <div className="grid grid-cols-3 gap-2" role="group" aria-label="Pra qual pasto foi?">

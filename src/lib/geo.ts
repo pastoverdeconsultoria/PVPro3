@@ -100,3 +100,22 @@ export function areaWeightedCentroid(rings: readonly (readonly LngLat[])[]): { l
   const [ex, ny] = project([origin[0] + 1, origin[1] + 1]);
   return { lon: origin[0] + cx / total / ex, lat: origin[1] + cy / total / ny };
 }
+
+/** O ponto está dentro do anel? (regra par-ímpar; o anel pode vir fechado ou não) */
+export function pointInRing(point: LngLat, ring: readonly (readonly [number, number])[]): boolean {
+  const [x, y] = point;
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** O ponto está dentro do polígono? O primeiro anel é o contorno; os demais são buracos. */
+export function pointInPolygon(point: LngLat, rings: readonly (readonly (readonly [number, number])[])[]): boolean {
+  if (!rings.length || !pointInRing(point, rings[0])) return false;
+  for (let i = 1; i < rings.length; i++) if (pointInRing(point, rings[i])) return false;
+  return true;
+}

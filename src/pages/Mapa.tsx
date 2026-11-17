@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FarmMap, type MapShape } from '../components/FarmMap';
 import { MoveSheet } from '../components/LotSheets';
 import { Actions, ErrorText, Field, Sheet, useAction } from '../components/ui';
@@ -6,7 +6,9 @@ import { differs, type PaddockView, type PeriodView } from '../lib/farm/farmView
 import { SPECIES } from '../lib/farm/newFarm';
 import { MAP_LEGEND, paddockStatusText, paddockStyle } from '../lib/farm/paddockStyle';
 import { nf } from '../lib/format';
+import { pointInPolygon } from '../lib/geo';
 import { formatBr, formatDayMonth, todayLocal } from '../lib/lots/dates';
+import { geoProblem, useGeolocation } from '../lib/useGeolocation';
 import { useApp, useFarmView, type FarmScreenData } from '../state/AppContext';
 
 export function Mapa() {
@@ -19,6 +21,23 @@ export function Mapa() {
     () => (data ? data.paddocks.map((p) => ({ id: p.id, name: p.name, rings: p.geom.coordinates })) : []),
     [data?.paddocks],
   );
+  // GPS: onde o aparelho está, e em qual piquete isso cai.
+  const [locating, setLocating] = useState(false);
+  const gps = useGeolocation(locating);
+  const here = useMemo(() => {
+    if (!data || gps.lat == null || gps.lon == null) return null;
+    return data.paddocks.find((p) => pointInPolygon([gps.lon!, gps.lat!], p.geom.coordinates)) ?? null;
+  }, [data, gps.lat, gps.lon]);
+  // Na primeira posição, abre o cartão do piquete onde a pessoa está.
+  const opened = useRef(false);
+  useEffect(() => {
+    if (!locating) opened.current = false;
+    else if (here && !opened.current) {
+      opened.current = true;
+      setSelectedId(here.id);
+    }
+  }, [locating, here]);
+
   if (!fv || !data) return null;
 
   const { view } = fv;
@@ -53,6 +72,7 @@ export function Mapa() {
           label="Piquetes da fazenda"
           shapes={shapes}
           points={data.waterPoints}
+          me={gps.status === 'ok' && gps.lat != null && gps.lon != null ? { lat: gps.lat, lon: gps.lon } : null}
           selectedId={selectedId}
           onSelect={(id) => setSelectedId((cur) => (cur === id ? null : id))}
           styleOf={(id) => {
@@ -60,6 +80,22 @@ export function Mapa() {
             return p ? paddockStyle(p) : { fill: '#3A433E', text: '#EEF3EC' };
           }}
         />
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2" aria-label="Minha posição">
+          <button type="button" className={`btn ${locating ? 'chip-on' : ''}`} aria-pressed={locating} onClick={() => setLocating((v) => !v)}>
+            📍 {locating ? 'Parar de me localizar' : 'Onde estou'}
+          </button>
+          {locating ? (
+            <span className="min-w-0 flex-1 text-sm" role="status">
+              {gps.status === 'buscando'
+                ? 'Procurando o sinal do GPS…'
+                : gps.status === 'ok'
+                  ? here
+                    ? <>Você está em <b>{here.name}</b> <span className="k text-xs">(±{nf(gps.accuracyM ?? 0, 0)} m)</span></>
+                    : <>Você está fora dos piquetes do mapa <span className="k text-xs">(±{nf(gps.accuracyM ?? 0, 0)} m)</span></>
+                  : <span className="text-warn">{geoProblem(gps.status)}</span>}
+            </span>
+          ) : null}
+        </div>
         {!selected ? <p className="k m-0 text-xs">Toque num piquete para ver se está ocupado e as últimas informações.</p> : null}
       </section>
 

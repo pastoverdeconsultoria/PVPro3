@@ -1,4 +1,4 @@
-import type { Farm, FarmData } from './types';
+import type { Farm, FarmData, PendingOp } from './types';
 
 // Cópia do que foi lido por último, guardada no aparelho. Serve para abrir o app
 // sem sinal e ver a situação como estava. Fica separada por usuário. Se o
@@ -61,13 +61,30 @@ export const cache = {
   loadLastFarm(userId: string): string | null {
     return read(key(userId, 'last'));
   },
-  /** Ao sair da conta, a cópia desse usuário é apagada do aparelho. */
+  /** Registros feitos sem sinal, ainda não enviados, de uma fazenda. */
+  saveOutbox(userId: string, farmId: string, ops: PendingOp[]) {
+    if (ops.length) write(key(userId, `outbox:${farmId}`), ops);
+    else {
+      try {
+        localStorage.removeItem(key(userId, `outbox:${farmId}`));
+      } catch {
+        /* nada a fazer */
+      }
+    }
+  },
+  loadOutbox(userId: string, farmId: string): PendingOp[] {
+    return read<PendingOp[]>(key(userId, `outbox:${farmId}`)) ?? [];
+  },
+  /**
+   * Ao sair da conta, a cópia desse usuário é apagada do aparelho. A fila de
+   * registros ainda não enviados fica: apagá-la seria perder trabalho de campo.
+   */
   clear(userId: string) {
     try {
       const mine = `${PREFIX}:${userId}:`;
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const k = localStorage.key(i);
-        if (k?.startsWith(mine)) localStorage.removeItem(k);
+        if (k?.startsWith(mine) && !k.startsWith(`${mine}outbox:`)) localStorage.removeItem(k);
       }
     } catch {
       /* nada a fazer */

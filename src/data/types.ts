@@ -238,4 +238,13 @@ export interface Auth {
   signOut(): Promise<void>;
 }
 
+/**
+ * Gravação feita sem sinal, guardada no aparelho até conseguir enviar. Só as
+ * ações de campo entram aqui: registros do lote, lote novo e chuva.
+ */
+export type PendingOp =
+  | { id: string; kind: 'events'; events: LotEvent[] }
+  | { id: string; kind: 'createLot'; lot: Lot; events: LotEvent[] }
+  | { id: string; kind: 'rain'; rain: Pick<RainRecord, 'id' | 'date' | 'mm' | 'note'>; replace: boolean };
+
 export const OFFLINE_MESSAGE = 'Sem resposta do servidor. Confira o sinal e tente de novo.';

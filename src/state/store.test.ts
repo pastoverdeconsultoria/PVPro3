@@ -278,14 +278,14 @@ describe('sem sinal', () => {
     expect(v.paddockById.get(pid('P01'))!.occupants.map((o) => o.lot.name)).toEqual(['Lote 1']);
   });
 
-  it('gravação sem sinal dá erro claro e não muda o que está na tela', async () => {
-    await s().createLot({ name: 'Lote 1', date: '2026-10-01', heads: 90, weightKg: 450, category: 'Vacas', weighed: false });
+  it('ação de escritório sem sinal dá erro claro e não muda o que está na tela', async () => {
     be.setOffline(true);
     const before = s().data;
-    expect(err(await s().moveLot(lotId('Lote 1'), pid('P01'), '2026-11-01'))).toBe(
+    expect(err(await s().updatePaddock(pid('P01'), { name: 'Outro nome' }))).toBe(
       'Sem resposta do servidor. Confira o sinal e tente de novo.',
     );
     expect(s().data).toBe(before);
+    // A ação de campo (mudança de gado) sem sinal é guardada e enviada depois: ver outbox.test.ts.
   });
 
   it('falha ao atualizar não apaga o que já estava na tela', async () => {

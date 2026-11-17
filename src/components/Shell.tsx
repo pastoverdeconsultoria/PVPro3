@@ -26,6 +26,10 @@ export function Shell() {
   const refresh = useApp((s) => s.refresh);
   const refreshReports = useApp((s) => s.refreshReports);
   const farmId = useApp((s) => s.farmId);
+  const outbox = useApp((s) => s.outbox.length);
+  const outboxError = useApp((s) => s.outboxError);
+  const flushOutbox = useApp((s) => s.flushOutbox);
+  const dismissOutboxError = useApp((s) => s.dismissOutboxError);
   const newReports = useApp((s) => s.data?.reports.reduce((n, r) => n + (r.status === 'novo' ? 1 : 0), 0) ?? 0);
 
   // Confere se a equipe mandou relato novo: ao abrir, quando o sinal volta, quando o
@@ -33,7 +37,9 @@ export function Shell() {
   useEffect(() => {
     if (!farmId) return;
     const check = () => {
-      if (document.visibilityState === 'visible') void refreshReports();
+      if (document.visibilityState !== 'visible') return;
+      // Primeiro envia o que ficou guardado sem sinal; depois confere o caderno.
+      void flushOutbox().then(() => refreshReports());
     };
     window.addEventListener('online', check);
     document.addEventListener('visibilitychange', check);
@@ -43,7 +49,7 @@ export function Shell() {
       document.removeEventListener('visibilitychange', check);
       clearInterval(timer);
     };
-  }, [farmId, refreshReports]);
+  }, [farmId, refreshReports, flushOutbox]);
 
   return (
     <>
@@ -97,6 +103,28 @@ export function Shell() {
           </span>
         </div>
 
+        {outbox ? (
+          <div className="border-t border-warn/40 bg-warn/10" role="status" aria-label="Registros esperando sinal">
+            <div className="mx-auto flex max-w-[1320px] flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3.5 py-1.5 text-[13px] text-warn desk:px-6">
+              <span>
+                {outbox} {outbox === 1 ? 'registro guardado' : 'registros guardados'} neste aparelho, esperando sinal. Vai sozinho quando o sinal voltar.
+              </span>
+              <button type="button" className="btn min-h-[36px] border-warn/60 px-3 text-[13px] text-warn" onClick={() => void flushOutbox()}>
+                Enviar agora
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {outboxError ? (
+          <div className="border-t border-warn/40 bg-warn/10" role="alert">
+            <div className="mx-auto flex max-w-[1320px] flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3.5 py-1.5 text-[13px] text-warn desk:px-6">
+              <span>{outboxError}</span>
+              <button type="button" className="btn min-h-[36px] border-warn/60 px-3 text-[13px] text-warn" onClick={dismissOutboxError}>
+                Entendi
+              </button>
+            </div>
+          </div>
+        ) : null}
         {staleSince ? (
           <div className="border-t border-warn/40 bg-warn/10">
             <div className="mx-auto flex max-w-[1320px] flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3.5 py-1.5 text-[13px] text-warn desk:px-6">

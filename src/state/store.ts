@@ -10,6 +10,7 @@ import {
   type Module,
   type NewFarm,
   type PaddockPatch,
+  type PendingOp,
   type RainRecord,
   type Repo,
   type ReportPatch,
@@ -60,6 +61,10 @@ export interface AppState {
   useCalibratedM: boolean;
   /** Quem tem acesso à fazenda aberta. Null enquanto não foi lido. */
   members: FarmMember[] | null;
+  /** Registros feitos sem sinal, guardados no aparelho, esperando envio. */
+  outbox: PendingOp[];
+  /** Aviso quando um registro guardado sem sinal foi recusado pelo servidor. */
+  outboxError: string | null;
 
   init(): Promise<void>;
   signIn(email: string, password: string): Promise<Result<void>>;
@@ -107,6 +112,9 @@ export interface AppState {
   loadMembers(): Promise<Result<void>>;
   addMember(email: string): Promise<Result<void>>;
   removeMember(userId: string): Promise<Result<void>>;
+  /** Envia o que ficou guardado sem sinal. Chamado ao abrir, quando o sinal volta e de tempos em tempos. */
+  flushOutbox(): Promise<void>;
+  dismissOutboxError(): void;
 }
 
 export type RainMode = 'somar' | 'substituir';
@@ -128,7 +136,27 @@ export type AppStore = StoreApi<AppState>;
 
 /** A cópia do clima vale por 6 horas dentro do mesmo dia. */
 const CLIMATE_MAX_AGE_MS = 6 * 3600_000;
-const NO_CLIMATE = { climate: null, climateState: 'idle' as const, climateError: null, climateStale: false, members: null };
+const NO_CLIMATE = { climate: null, climateState: 'idle' as const, climateError: null, climateStale: false, members: null, outbox: [] as PendingOp[], outboxError: null };
+
+/** Efeito de um registro guardado sem sinal sobre os dados da tela. Aplicar duas vezes não duplica. */
+function applyOp(d: FarmData, op: PendingOp): FarmData {
+  if (op.kind === 'rain') {
+    const rain = d.rain.filter((r) => r.id !== op.rain.id && !(op.replace && r.date === op.rain.date));
+    return { ...d, rain: [...rain, { ...op.rain, reportId: null }] };
+  }
+  const have = new Set(d.events.map((e) => e.id));
+  const events = [...d.events, ...op.events.filter((e) => !have.has(e.id))];
+  if (op.kind === 'events') return { ...d, events };
+  return { ...d, events, lots: d.lots.some((l) => l.id === op.lot.id) ? d.lots : [...d.lots, op.lot] };
+}
+
+/** Desfaz o efeito de um registro que o servidor recusou. */
+function undoOp(d: FarmData, op: PendingOp): FarmData {
+  if (op.kind === 'rain') return { ...d, rain: d.rain.filter((r) => r.id !== op.rain.id) };
+  const ids = new Set(op.events.map((e) => e.id));
+  const events = d.events.filter((e) => !ids.has(e.id));
+  return op.kind === 'events' ? { ...d, events } : { ...d, events, lots: d.lots.filter((l) => l.id !== op.lot.id) };
+}
 
 export function createAppStore({ repo, auth, climate: climateApi, now = () => new Date() }: StoreDeps): AppStore {
   const today = () => todayLocal(now());
@@ -214,6 +242,46 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
       return { ok: true, value: partners.map((e) => e.id) };
     };
 
+    const persistOutbox = (outbox: PendingOp[]) => {
+      const { user, farmId } = get();
+      set({ outbox });
+      if (user && farmId) cache.saveOutbox(user.id, farmId, outbox);
+    };
+
+    /** Manda um registro ao servidor e põe na tela o que ele devolveu (com `seq`). */
+    const sendOp = async (farmId: string, op: PendingOp) => {
+      if (op.kind === 'events') mergeEvents(await repo.recordEvents(farmId, op.events));
+      else if (op.kind === 'createLot') {
+        const saved = await repo.createLot(op.lot, op.events);
+        patchData((d) => applyOp(d, { ...op, events: [] }));
+        mergeEvents(saved.length ? saved : op.events);
+      } else mergeRain(await repo.recordRain(farmId, op.rain, { replace: op.replace }), op.replace ? 'substituir' : 'somar');
+    };
+
+    let flushing: Promise<void> | null = null;
+
+    /**
+     * Ação de campo: tenta gravar; sem sinal, guarda no aparelho, mostra na tela
+     * como se tivesse gravado e envia depois, na mesma ordem. Se já há registro
+     * esperando, o novo entra atrás dele, para a ordem não se inverter.
+     */
+    const runOp = async (op: PendingOp, failText: string): Promise<Result<void>> => {
+      const farmId = get().farmId;
+      if (!farmId) return fail('Nenhuma fazenda aberta.');
+      if (get().outbox.length) await get().flushOutbox();
+      if (!get().outbox.length) {
+        try {
+          await sendOp(farmId, op);
+          return OK;
+        } catch (e) {
+          if (!(e instanceof RepoError && e.offline)) return fail(message(e, failText));
+        }
+      }
+      patchData((d) => applyOp(d, op));
+      persistOutbox([...get().outbox, op]);
+      return OK;
+    };
+
     const applyUser = async (user: User | null) => {
       if (user?.id === get().user?.id && get().phase !== 'starting') return;
       if (!user) {
@@ -297,13 +365,16 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
       async openFarm(farmId) {
         const user = get().user;
         if (!user) return;
-        set({ farmId, data: null, loading: true, loadError: null, staleSince: null, ...NO_CLIMATE });
+        const outbox = cache.loadOutbox(user.id, farmId);
+        set({ farmId, data: null, loading: true, loadError: null, staleSince: null, ...NO_CLIMATE, outbox });
         cache.saveLastFarm(user.id, farmId);
         try {
-          const data = await repo.loadFarm(farmId);
+          // O que foi feito sem sinal e ainda não chegou ao servidor continua na tela.
+          const data = outbox.reduce(applyOp, await repo.loadFarm(farmId));
           if (get().farmId !== farmId) return;
           set({ data, loading: false });
           cache.saveFarm(user.id, data);
+          if (outbox.length) void get().flushOutbox();
         } catch (e) {
           if (get().farmId !== farmId) return;
           const saved = e instanceof RepoError && e.offline ? cache.loadFarm(user.id, farmId) : null;
@@ -324,7 +395,7 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
         if (!farmId || !user) return;
         set({ loading: true, loadError: null });
         try {
-          const data = await repo.loadFarm(farmId);
+          const data = get().outbox.reduce(applyOp, await repo.loadFarm(farmId));
           if (get().farmId !== farmId) return;
           set({ data, loading: false, staleSince: null });
           cache.saveFarm(user.id, data);
@@ -435,13 +506,7 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
         if (input.weighed) {
           events.push({ id: crypto.randomUUID(), lotId: lot.id, date: input.date, type: 'pesagem', weightKg: input.weightKg, headsWeighed: input.heads });
         }
-        try {
-          const saved = await repo.createLot(lot, events);
-          patchData((d) => ({ ...d, lots: [...d.lots, lot], events: [...d.events, ...saved] }));
-          return OK;
-        } catch (e) {
-          return fail(message(e, 'Não deu para criar o lote.'));
-        }
+        return runOp({ id: crypto.randomUUID(), kind: 'createLot', lot, events }, 'Não deu para criar o lote.');
       },
 
       async moveLot(lotId, toPaddockId, date) {
@@ -450,13 +515,8 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
         if (!ctx.data.paddocks.some((p) => p.id === toPaddockId)) return fail('Escolha o piquete de destino.');
         const plan = planMove({ events: ctx.events, lotId, lotName: ctx.lot.name, toPaddockId, date, today: today() });
         if (!plan.ok) return plan;
-        try {
-          // Saída e entrada vão na mesma chamada, nessa ordem (invariante 2).
-          mergeEvents(await repo.recordEvents(ctx.data.farm.id, plan.value));
-          return OK;
-        } catch (e) {
-          return fail(message(e, 'Não deu para gravar a mudança.'));
-        }
+        // Saída e entrada vão na mesma chamada, nessa ordem (invariante 2).
+        return runOp({ id: crypto.randomUUID(), kind: 'events', events: plan.value }, 'Não deu para gravar a mudança.');
       },
 
       async addEvent(lotId, draft) {
@@ -478,12 +538,7 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
         const event = { ...draft, id: crypto.randomUUID(), lotId } as LotEvent;
         const check = checkChange(lotId, [...ctx.events, event], ctx.lot.name);
         if (!check.ok) return check;
-        try {
-          mergeEvents(await repo.recordEvents(ctx.data.farm.id, [event]));
-          return OK;
-        } catch (e) {
-          return fail(message(e, 'Não deu para gravar o registro.'));
-        }
+        return runOp({ id: crypto.randomUUID(), kind: 'events', events: [event] }, 'Não deu para gravar o registro.');
       },
 
       async transferAnimals(fromLotId, toLotId, heads, date) {
@@ -508,13 +563,8 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
         if (!checkOut.ok) return checkOut;
         const checkIn = checkChange(toLotId, [...to.events, into], to.lot.name);
         if (!checkIn.ok) return checkIn;
-        try {
-          // Saída e entrada na mesma chamada: ou as duas, ou nenhuma.
-          mergeEvents(await repo.recordEvents(from.data.farm.id, [out, into]));
-          return OK;
-        } catch (e) {
-          return fail(message(e, 'Não deu para gravar a transferência.'));
-        }
+        // Saída e entrada na mesma chamada: ou as duas, ou nenhuma.
+        return runOp({ id: crypto.randomUUID(), kind: 'events', events: [out, into] }, 'Não deu para gravar a transferência.');
       },
 
       async removeEvent(lotId, eventId) {
@@ -664,17 +714,10 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
         if (!data) return fail('Nenhuma fazenda aberta.');
         const problem = checkRain(input.date, input.mm);
         if (problem) return fail(problem);
-        try {
-          const saved = await repo.recordRain(
-            data.farm.id,
-            { id: crypto.randomUUID(), date: input.date, mm: input.mm, note: input.note?.trim() || null },
-            { replace: mode === 'substituir' },
-          );
-          mergeRain(saved, mode);
-          return OK;
-        } catch (e) {
-          return fail(message(e, 'Não deu para registrar a chuva.'));
-        }
+        return runOp(
+          { id: crypto.randomUUID(), kind: 'rain', rain: { id: crypto.randomUUID(), date: input.date, mm: input.mm, note: input.note?.trim() || null }, replace: mode === 'substituir' },
+          'Não deu para registrar a chuva.',
+        );
       },
 
       async removeRain(rainId) {
@@ -694,6 +737,37 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
         } catch (e) {
           return fail(message(e, 'Não deu para trocar o link.'));
         }
+      },
+
+      flushOutbox() {
+        if (flushing) return flushing;
+        const farmId = get().farmId;
+        if (!farmId || !get().outbox.length || !get().data) return Promise.resolve();
+        flushing = (async () => {
+          let sent = 0;
+          while (get().outbox.length && get().farmId === farmId) {
+            const [op, ...rest] = get().outbox;
+            try {
+              await sendOp(farmId, op);
+              sent += 1;
+            } catch (e) {
+              if (e instanceof RepoError && e.offline) break;
+              // O servidor recusou: sai da fila e da tela, e o consultor é avisado.
+              patchData((d) => undoOp(d, op));
+              set({ outboxError: `Um registro feito sem sinal não foi aceito e foi desfeito: ${message(e, 'erro desconhecido')}` });
+            }
+            persistOutbox(rest);
+          }
+          // Releitura para ficar com o que o servidor guardou (ordem e `seq`).
+          if (sent && get().farmId === farmId) await get().refresh();
+        })().finally(() => {
+          flushing = null;
+        });
+        return flushing;
+      },
+
+      dismissOutboxError() {
+        set({ outboxError: null });
       },
 
       async loadClimate(force = false) {

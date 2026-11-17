@@ -89,3 +89,18 @@ export function useClimateModel(): ClimateModel | null {
     return { series, scenarios, months, model };
   }, [fv, series, rain, fertilizations, useCalibrated]);
 }
+
+/**
+ * Se a conta mexe em tudo da fazenda aberta. Falso para "leitura + campo": a
+ * conta vê tudo e só grava troca de gado, pesagem e chuva (pela tela Campo).
+ */
+export function useCanEdit(): boolean {
+  return useApp((s) => s.data?.myRole !== 'viewer');
+}
+
+/** Leitura do estado na hora, fora do render (ex.: logo depois de gravar). */
+export function useAppStore(): AppStore {
+  const store = useContext(StoreContext);
+  if (!store) throw new Error('AppProvider ausente.');
+  return store;
+}

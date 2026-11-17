@@ -6,7 +6,7 @@ import { CAD_MM } from '../lib/climate/water';
 import { monthLabel } from '../lib/farm/rain';
 import { nf, parseNum } from '../lib/format';
 import { formatBr, todayLocal } from '../lib/lots/dates';
-import { useApp, useClimateModel, useFarmView, type FarmScreenData } from '../state/AppContext';
+import { useApp, useClimateModel, useFarmView, type FarmScreenData, useCanEdit } from '../state/AppContext';
 
 const monthKey = (m: { year: number; month: number }) => `${m.year}-${String(m.month + 1).padStart(2, '0')}`;
 /** 'nov' no ano corrente, 'jan/27' nos outros. */
@@ -325,6 +325,7 @@ function Fertilizations({ fv, onAdd }: { fv: FarmScreenData; onAdd: () => void }
   const list = useApp((s) => s.data?.fertilizations);
   const ready = useApp((s) => s.data?.fertilizationReady !== false);
   const remove = useApp((s) => s.removeFertilization);
+  const canEdit = useCanEdit();
   const { busy, error, run } = useAction();
   const sorted = [...(list ?? [])].sort((a, b) => (a.date < b.date ? 1 : -1));
 
@@ -332,7 +333,7 @@ function Fertilizations({ fv, onAdd }: { fv: FarmScreenData; onAdd: () => void }
     <section className="card flex flex-col gap-3" aria-label="Adubações nitrogenadas">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="h2">Adubações nitrogenadas</h2>
-        {ready ? (
+        {ready && canEdit ? (
           <button type="button" className="btn btn-pri" onClick={onAdd}>
             Registrar adubação
           </button>
@@ -354,9 +355,11 @@ function Fertilizations({ fv, onAdd }: { fv: FarmScreenData; onAdd: () => void }
                     <b>{fv.paddockName(f.paddockId)}</b> · {nf(f.nKgHa, 0)} kg N/ha{p ? ` · ${nf(f.nKgHa * p.paddock.areaHa, 0)} kg N` : ''}
                   </span>
                 </span>
-                <button type="button" className="btn shrink-0 px-3 text-[13px]" disabled={busy} aria-label={`Apagar adubação de ${fv.paddockName(f.paddockId)} em ${formatBr(f.date)}`} onClick={() => void run(() => remove(f.id))}>
-                  Apagar
-                </button>
+                {canEdit ? (
+                  <button type="button" className="btn shrink-0 px-3 text-[13px]" disabled={busy} aria-label={`Apagar adubação de ${fv.paddockName(f.paddockId)} em ${formatBr(f.date)}`} onClick={() => void run(() => remove(f.id))}>
+                    Apagar
+                  </button>
+                ) : null}
               </li>
             );
           })}

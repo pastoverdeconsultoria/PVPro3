@@ -7,13 +7,14 @@ import { compositionVersions, CONDITION_LABEL, M_REF, MODULE_COLORS, type Module
 import { byName, groupOf, namesToClean } from '../lib/farm/names';
 import { nf, parseNum } from '../lib/format';
 import { formatBr, todayLocal } from '../lib/lots/dates';
-import { useApp, useFarmView, type FarmScreenData } from '../state/AppContext';
+import { useApp, useCanEdit, useFarmView, type FarmScreenData } from '../state/AppContext';
 
 export function Modulos() {
   const fv = useFarmView();
   const [editing, setEditing] = useState<ModuleView | 'novo' | { name: string; ids: string[] } | null>(null);
   const paddocksRaw = useApp((s) => s.data?.paddocks);
   const cleanPaddockNames = useApp((s) => s.cleanPaddockNames);
+  const canEdit = useCanEdit();
   const clean = useAction();
   if (!fv) return null;
 
@@ -31,10 +32,12 @@ export function Modulos() {
           <h1 className="big m-0 text-[30px] desk:text-[34px]">Módulos</h1>
           <p className="k m-0 max-w-[70ch]">Módulo é o grupo de piquetes por onde um lote roda, na ordem do rodízio.</p>
         </div>
-        <button type="button" className="btn btn-pri" onClick={() => setEditing('novo')}>
-          <Icon name="plus" />
-          Novo módulo
-        </button>
+        {canEdit ? (
+          <button type="button" className="btn btn-pri" onClick={() => setEditing('novo')}>
+            <Icon name="plus" />
+            Novo módulo
+          </button>
+        ) : null}
       </div>
 
       {!modules.length ? (
@@ -60,9 +63,11 @@ export function Modulos() {
                     {m.module.plannedLotId ? ` · lote planejado: ${fv.lotName(m.module.plannedLotId)}` : ''}
                   </span>
                 </div>
-                <button type="button" className="btn shrink-0 px-3.5 text-[13px]" onClick={() => setEditing(m)}>
-                  Editar
-                </button>
+                {canEdit ? (
+                  <button type="button" className="btn shrink-0 px-3.5 text-[13px]" onClick={() => setEditing(m)}>
+                    Editar
+                  </button>
+                ) : null}
               </div>
               <ol className="m-0 flex list-none flex-col gap-1.5 p-0">
                 {m.paddocks.map((p, i) => (
@@ -80,7 +85,7 @@ export function Modulos() {
         </div>
       )}
 
-      {dirtyNames.length ? (
+      {dirtyNames.length && canEdit ? (
         <section className="card flex flex-col items-start gap-2.5 border-warn/60" aria-label="Nomes com a área junto">
           <h2 className="h2">Os nomes vieram com a área junto</h2>
           <p className="k m-0 max-w-[62ch]">
@@ -107,9 +112,9 @@ export function Modulos() {
                 <h3 className="m-0 font-display text-[16px] font-semibold">
                   {group} <span className="k font-sans text-xs font-normal">· {list.length} {list.length === 1 ? 'piquete' : 'piquetes'} · {nf(list.reduce((s, p) => s + p.paddock.areaHa, 0), 1)} ha</span>
                 </h3>
-                <button type="button" className="btn px-3.5 text-[13px]" aria-label={`Criar módulo com os ${list.length} piquetes de ${group}`} onClick={() => setEditing({ name: `Módulo ${group}`, ids: list.map((p) => p.paddock.id) })}>
+                {canEdit ? <button type="button" className="btn px-3.5 text-[13px]" aria-label={`Criar módulo com os ${list.length} piquetes de ${group}`} onClick={() => setEditing({ name: `Módulo ${group}`, ids: list.map((p) => p.paddock.id) })}>
                   Criar módulo com estes
-                </button>
+                </button> : null}
               </div>
               <ul className="m-0 grid list-none grid-cols-3 gap-1.5 p-0 min-[520px]:grid-cols-4 desk:grid-cols-6">
                 {list.map((p) => (

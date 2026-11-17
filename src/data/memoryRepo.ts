@@ -6,6 +6,7 @@ import {
   type Auth,
   type CompositionRow,
   type Farm,
+  type FarmRole,
   type Fertilization,
   type FieldReport,
   type Lot,
@@ -43,9 +44,11 @@ export function createMemoryBackend() {
   /** Null: todo mundo é administrador (testes antigos). Com lista, só esses e-mails. */
   let admins: Set<string> | null = null;
   let inviteOnly = false;
-  const invites: { id: string; farmId: string; email: string; createdAt: string; open: boolean }[] = [];
+  const invites: { id: string; farmId: string; email: string; role: 'member' | 'viewer'; createdAt: string; open: boolean }[] = [];
   const isAdmin = () => !admins || admins.has(user?.email ?? '');
   const listeners = new Set<(u: User | null) => void>();
+  const recoveryListeners = new Set<() => void>();
+  const resetRequests: string[] = [];
 
   let seq = 0;
   let user: User | null = null;
@@ -64,6 +67,18 @@ export function createMemoryBackend() {
   const member = (farmId: string) => {
     if (!members.get(farmId)?.has(uid())) throw new RepoError('Sua conta não tem acesso a essa fazenda.');
   };
+  /** Papel de quem não é dono: acesso completo ('member') ou leitura + campo ('viewer'). */
+  const roles = new Map<string, 'member' | 'viewer'>();
+  const roleOf = (farmId: string, userId: string): FarmRole =>
+    owners.get(farmId) === userId ? 'owner' : roles.get(`${farmId}:${userId}`) ?? 'member';
+  const NO_PERMISSION = 'Sua conta não tem permissão para gravar isso nesta fazenda.';
+  const FIELD_TYPES = new Set(['piquete_entrada', 'piquete_saida', 'pesagem']);
+  const authors = new Map<string, string>();
+  /** Mesma regra do banco: quem é só leitura não grava fora do campo. */
+  const editor = (farmId: string) => {
+    member(farmId);
+    if (roleOf(farmId, uid()) === 'viewer') throw new RepoError(NO_PERMISSION);
+  };
   const setUser = (u: User | null) => {
     user = u;
     for (const l of listeners) l(u);
@@ -76,6 +91,7 @@ export function createMemoryBackend() {
       if (!lot || lot.farmId !== farmId) throw new RepoError('Lote de outra fazenda.');
       const row = { ...e, seq: ++seq, deletedAt: null, link: e.link ?? null } as LotEvent;
       events.push(row);
+      authors.set(row.id, uid());
       saved.push(row);
     }
     return saved;
@@ -106,6 +122,7 @@ export function createMemoryBackend() {
         reports: reports.filter((r) => r.farmId === farmId).map(({ farmId: _f, ...r }) => r),
         rain: rain.filter((r) => r.farmId === farmId && !r.deletedAt).map(({ farmId: _f, deletedAt: _d, ...r }) => r),
         fertilizations: fertilizations.filter((x) => x.farmId === farmId && !x.deletedAt).map(({ farmId: _f, deletedAt: _d, ...x }) => x),
+        myRole: roleOf(farmId, uid()),
       });
     },
 
@@ -129,13 +146,13 @@ export function createMemoryBackend() {
       online('updatePaddock');
       const p = paddocks.find((x) => x.id === paddockId);
       if (!p) return;
-      member(p.farmId);
+      editor(p.farmId);
       Object.assign(p, patch);
     },
 
     async saveModule(module, composition) {
       online('saveModule');
-      member(module.farmId);
+      editor(module.farmId);
       const i = modules.findIndex((m) => m.id === module.id);
       if (i >= 0) modules[i] = { ...module, deletedAt: null };
       else modules.push({ ...module, deletedAt: null });
@@ -162,13 +179,13 @@ export function createMemoryBackend() {
       online('setModuleDeleted');
       const m = modules.find((x) => x.id === moduleId);
       if (!m) return;
-      member(m.farmId);
+      editor(m.farmId);
       m.deletedAt = deletedAt;
     },
 
     async createLot(lot, list) {
       online('createLot');
-      member(lot.farmId);
+      editor(lot.farmId);
       const inicio = list.find((e) => e.type === 'inicio');
       if (!inicio || inicio.type !== 'inicio' || inicio.heads <= 0 || inicio.weightKg <= 0) {
         throw new RepoError('Não deu para criar o lote: formação inválida.');
@@ -180,20 +197,30 @@ export function createMemoryBackend() {
     async recordEvents(farmId, list) {
       online('recordEvents');
       member(farmId);
+      if (roleOf(farmId, uid()) === 'viewer' && list.some((e) => !FIELD_TYPES.has(e.type))) {
+        throw new RepoError(NO_PERMISSION);
+      }
       return structuredClone(insertEvents(farmId, list));
     },
 
     async setEventsDeleted(eventIds, deletedAt) {
       online('setEventsDeleted');
-      uid();
-      for (const e of events) if (eventIds.includes(e.id)) e.deletedAt = deletedAt;
+      const me = uid();
+      for (const e of events) {
+        if (!eventIds.includes(e.id)) continue;
+        const lot = lots.find((l) => l.id === e.lotId);
+        if (!lot || !members.get(lot.farmId)?.has(me)) continue;
+        // Leitor só desfaz o que ele mesmo gravou, e só de campo (o banco ignora o resto).
+        if (roleOf(lot.farmId, me) === 'viewer' && (authors.get(e.id) !== me || !FIELD_TYPES.has(e.type))) continue;
+        e.deletedAt = deletedAt;
+      }
     },
 
     async setLotDeleted(lotId, deletedAt) {
       online('setLotDeleted');
       const l = lots.find((x) => x.id === lotId);
       if (!l) return;
-      member(l.farmId);
+      editor(l.farmId);
       l.deletedAt = deletedAt;
     },
 
@@ -207,7 +234,7 @@ export function createMemoryBackend() {
       online('updateReport');
       const r = reports.find((x) => x.id === reportId);
       if (!r) return;
-      member(r.farmId);
+      editor(r.farmId);
       Object.assign(r, patch);
     },
 
@@ -215,13 +242,13 @@ export function createMemoryBackend() {
       online('setReportStatus');
       const r = reports.find((x) => x.id === reportId);
       if (!r) return;
-      member(r.farmId);
+      editor(r.farmId);
       r.status = status;
     },
 
     async launchMoveReport(reportId, farmId, list) {
       online('launchMoveReport');
-      member(farmId);
+      editor(farmId);
       const r = reports.find((x) => x.id === reportId && x.farmId === farmId);
       if (!r || r.kind !== 'mudanca' || r.status !== 'novo') throw new RepoError('Esse relato já foi lançado ou descartado.');
       const saved = insertEvents(farmId, list);
@@ -257,7 +284,7 @@ export function createMemoryBackend() {
 
     async rotateShareToken(farmId) {
       online('rotateShareToken');
-      member(farmId);
+      editor(farmId);
       const f = farms.find((x) => x.id === farmId)!;
       f.shareToken = newToken();
       return f.shareToken;
@@ -265,7 +292,7 @@ export function createMemoryBackend() {
 
     async recordFertilization(farmId, fert) {
       online('recordFertilization');
-      member(farmId);
+      editor(farmId);
       if (!paddocks.some((p) => p.id === fert.paddockId && p.farmId === farmId)) throw new RepoError('Piquete de outra fazenda.');
       if (!fertilizations.some((x) => x.id === fert.id)) fertilizations.push({ ...fert, farmId, deletedAt: null });
     },
@@ -274,13 +301,13 @@ export function createMemoryBackend() {
       online('setFertilizationDeleted');
       const x = fertilizations.find((y) => y.id === fertilizationId);
       if (!x) return;
-      member(x.farmId);
+      editor(x.farmId);
       x.deletedAt = deletedAt;
     },
 
     async renameFarm(farmId, patch) {
       online('renameFarm');
-      member(farmId);
+      editor(farmId);
       Object.assign(farms.find((f) => f.id === farmId)!, patch);
     },
 
@@ -288,28 +315,36 @@ export function createMemoryBackend() {
       online('listMembers');
       member(farmId);
       const emailOf = (id: string) => [...accounts.entries()].find(([, a]) => a.id === id)?.[0] ?? '';
-      return [...members.get(farmId)!].map((id) => ({ userId: id, email: emailOf(id), role: owners.get(farmId) === id ? ('owner' as const) : ('member' as const) }));
+      return [...members.get(farmId)!].map((id) => ({ userId: id, email: emailOf(id), role: roleOf(farmId, id) }));
     },
 
-    async addMember(farmId, email) {
+    async addMember(farmId, email, role) {
       online('addMember');
       if (owners.get(farmId) !== uid()) throw new RepoError('Só o dono da fazenda dá acesso a outra conta.');
       const clean = email.trim().toLowerCase();
       const acc = accounts.get(clean);
       if (acc) {
         members.get(farmId)!.add(acc.id);
+        if (owners.get(farmId) !== acc.id) roles.set(`${farmId}:${acc.id}`, role);
         return 'member';
       }
-      if (!invites.some((i) => i.open && i.farmId === farmId && i.email === clean)) {
-        invites.push({ id: crypto.randomUUID(), farmId, email: clean, createdAt: new Date().toISOString(), open: true });
-      }
+      const open = invites.find((i) => i.open && i.farmId === farmId && i.email === clean);
+      if (open) open.role = role;
+      else invites.push({ id: crypto.randomUUID(), farmId, email: clean, role, createdAt: new Date().toISOString(), open: true });
       return 'invited';
+    },
+
+    async setMemberRole(farmId, userId, role) {
+      online('setMemberRole');
+      if (owners.get(farmId) !== uid()) throw new RepoError('Só o dono da fazenda muda o tipo de acesso.');
+      if (userId === uid()) throw new RepoError('Você não pode mudar o próprio acesso.');
+      if (members.get(farmId)?.has(userId) && owners.get(farmId) !== userId) roles.set(`${farmId}:${userId}`, role);
     },
 
     async listInvites(farmId) {
       online('listInvites');
       if (owners.get(farmId) !== uid()) return [];
-      return invites.filter((i) => i.open && i.farmId === farmId).map(({ id, email, createdAt }) => ({ id, email, createdAt }));
+      return invites.filter((i) => i.open && i.farmId === farmId).map(({ id, email, role, createdAt }) => ({ id, email, role, createdAt }));
     },
 
     async cancelInvite(inviteId) {
@@ -327,6 +362,7 @@ export function createMemoryBackend() {
         if (!inv.open || inv.email !== user?.email.toLowerCase()) continue;
         inv.open = false;
         members.get(inv.farmId)!.add(id);
+        roles.set(`${inv.farmId}:${id}`, inv.role);
         n++;
       }
       return n;
@@ -438,6 +474,19 @@ export function createMemoryBackend() {
     async signOut() {
       setUser(null);
     },
+    async requestPasswordReset(email) {
+      if (offline) throw new RepoError(OFFLINE_MESSAGE, true);
+      resetRequests.push(email.trim().toLowerCase());
+    },
+    async updatePassword(password) {
+      if (!user) throw new RepoError('O link expirou. Peça um novo em "Esqueci a senha".');
+      if (password.length < 6) throw new RepoError('A senha precisa ter pelo menos 6 caracteres.');
+      accounts.get(user.email)!.password = password;
+    },
+    onPasswordRecovery(listener) {
+      recoveryListeners.add(listener);
+      return () => recoveryListeners.delete(listener);
+    },
   };
 
   return {
@@ -452,6 +501,15 @@ export function createMemoryBackend() {
     /** Simula o banco sem a migração do caderno. */
     setNotebookMissing(value: boolean) {
       notebookMissing = value;
+    },
+    /** E-mails que pediram link de senha nova. */
+    resetRequests,
+    /** Simula a volta pelo link do e-mail: entra na conta e avisa que é recuperação de senha. */
+    async openRecoveryLink(email: string) {
+      const acc = accounts.get(email);
+      if (!acc) throw new Error('conta não existe');
+      setUser({ id: acc.id, email });
+      for (const l of recoveryListeners) l();
     },
     /** Liga a regra nova: só esses e-mails abrem fazenda, e cadastro só com convite. */
     restrictTo(adminEmails: string[]) {

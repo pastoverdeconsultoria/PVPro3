@@ -129,7 +129,7 @@ Padrão do PV Pro, reaproveitar o **padrão**, não o código:
 - O vaqueiro informa **data** (hoje, ontem ou outra) porque costuma avisar depois. Relato sem data cai no dia do envio, nunca em "hoje".
 - Relato fica "novo". O consultor revisa, edita e **lança** como evento oficial. Badge de pendência no app.
 - Funciona offline: fila local, cópia da lista de piquetes e lotes no aparelho, sincroniza ao abrir, ao voltar o sinal e a cada 2 min.
-- **Escopo definido pelo Lucas:** só **chuva** e **mudança de gado**. **Sem pesagem** e **sem ocorrência** no caderno. Pesagem entra só pelo consultor.
+- **Escopo definido pelo Lucas:** só **chuva** e **mudança de gado**. **Sem pesagem** e **sem ocorrência** no caderno. Pesagem entra pelo consultor ou, desde 18 nov 2026, pelo cliente com conta "leitura + campo" (tela Campo).
 - Consequência aceita: o peso do lote fica parado entre visitas, então a lotação de lotes que ganham peso sai levemente subestimada. Exigir pelo menos uma pesagem no início e uma no fim de qualquer período de teste.
 - Lançar mudança de gado grava saída e entrada pela regra da transação com `seq` (invariante 2) e das demais invariantes acima.
 
@@ -283,8 +283,10 @@ Limites conhecidos, aceitos por ora: o link do caderno é o segredo (quem tem o 
 - **Administrador** (`app_admins`): só ele abre fazenda nova (gatilho em `farms`). Quem era dono de fazenda quando a migração rodou virou administrador. O Lucas vê todas porque abre todas; administrador **não** enxerga fazenda de que não é dono. Se um dia houver mais de um consultor, decidir se administrador vê tudo.
 - **Convite** (`farm_invites`): "Dar acesso" com e-mail sem conta cria convite. O cliente toca em "Criar conta" com esse e-mail; ao entrar, `claim_farm_invites` vira acesso (só com e-mail confirmado). Convite pode ser cancelado.
 - **Trava de cadastro**: `hook_before_user_created` recusa e-mail sem convite aberto. Só funciona depois de ligado no painel (Authentication → Hooks → Before User Created → Postgres → essa função). Não se sabe se o hook também barra "Invite user" do painel do Supabase; o caminho previsto é o convite pelo app.
-- Cliente entra como `member`: vê e grava tudo da fazenda dele (mover gado, pesar etc.), mas não dá acesso a ninguém. Acesso só de leitura não existe ainda.
-- Falta: "esqueci a senha". Hoje quem esquece precisa que o Lucas troque a senha no painel do Supabase.
+- **Tipo de acesso** (migração `20261119120000_leitura.sql`, pedido do Lucas em 18 nov 2026): `viewer` = "leitura + campo", padrão do convite, pensado para o cliente. Vê tudo; grava só mudança de piquete, pesagem e chuva, e só desfaz o que ele mesmo gravou desses tipos. A regra está no banco (políticas com `is_farm_editor`), não só na tela. `member` = acesso completo. O dono troca um pelo outro em "Quem tem acesso".
+- **Tela Campo** (`/campo`): o caderno dentro do app, com botão grande e emoji: 🐮 mudei o gado, 🌧️ choveu, ⚖️ pesei. Grava direto no histórico (não é relato para revisar) e tem "Errei, desfazer" logo depois de gravar. Para o leitor ela substitui a aba Módulos; quem edita chega por Rebanho → Campo.
+- O caderno público do vaqueiro continua **sem pesagem**. Pesagem entra pelo consultor ou pelo cliente com conta.
+- **Esqueci a senha**: o link do e-mail volta para `/?senha=nova` e abre a tela de senha nova (mínimo de 8 caracteres). Exige `https://pv-pro3.vercel.app/**` em Authentication → URL Configuration → Redirect URLs. O envio de e-mail do Supabase sem SMTP próprio tem limite baixo por hora.
 
 Ideias incluídas sem pedido, que o Lucas pode tirar: aviso de pesagem com mais de 45 dias no Painel; limpeza do nome do piquete que traz a área junto; criar módulo já com o grupo de piquetes da mesma pasta ou letra; GPS no mapa e no caderno.
 

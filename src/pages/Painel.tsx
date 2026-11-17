@@ -7,13 +7,14 @@ import { moveQueue, whenText, type ModuleView } from '../lib/farm/modules';
 import { gmdText, nf } from '../lib/format';
 import { diffDays, formatDayMonth } from '../lib/lots/dates';
 import { projectScope } from '../lib/calc/projection';
-import { useApp, useClimateModel, useFarmView } from '../state/AppContext';
+import { useApp, useCanEdit, useClimateModel, useFarmView } from '../state/AppContext';
 
 /** Dias sem pesagem a partir dos quais o painel avisa. */
 const STALE_WEIGH_DAYS = 45;
 
 export function Painel() {
   const fv = useFarmView();
+  const canEdit = useCanEdit();
   const [moving, setMoving] = useState<{ lotId: string; to?: string } | null>(null);
   const newReports = useApp((s) => s.data?.reports.reduce((n, r) => n + (r.status === 'novo' ? 1 : 0), 0) ?? 0);
   const cm = useClimateModel();
@@ -97,19 +98,21 @@ export function Painel() {
         ))}
       </div>
 
-      <Link
-        to="/caderno"
-        aria-label="Caderno da equipe"
-        className={`card flex items-center justify-between gap-3 !py-3.5 text-text no-underline ${newReports ? 'border-warn' : ''}`}
-      >
-        <span className="flex min-w-0 flex-col gap-0.5">
-          <span className="font-display text-[17px] font-semibold">Caderno da equipe</span>
-          <span className={`text-[13px] ${newReports ? 'text-warn' : 'text-muted'}`}>
-            {newReports ? `${newReports} ${newReports === 1 ? 'relato novo esperando' : 'relatos novos esperando'} você lançar` : 'Nenhum relato novo. Link do vaqueiro e revisão.'}
+      {canEdit ? (
+        <Link
+          to="/caderno"
+          aria-label="Caderno da equipe"
+          className={`card flex items-center justify-between gap-3 !py-3.5 text-text no-underline ${newReports ? 'border-warn' : ''}`}
+        >
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="font-display text-[17px] font-semibold">Caderno da equipe</span>
+            <span className={`text-[13px] ${newReports ? 'text-warn' : 'text-muted'}`}>
+              {newReports ? `${newReports} ${newReports === 1 ? 'relato novo esperando' : 'relatos novos esperando'} você lançar` : 'Nenhum relato novo. Link do vaqueiro e revisão.'}
+            </span>
           </span>
-        </span>
-        <Icon name="arrow" />
-      </Link>
+          <Icon name="arrow" />
+        </Link>
+      ) : null}
 
       {overCapacity != null && farmProjection ? (
         <Link to="/analise" aria-label="Lotação acima da capacidade projetada" className="card flex items-center justify-between gap-3 border-warn !py-3.5 text-text no-underline">
@@ -175,10 +178,12 @@ export function Painel() {
           <p className="k m-0 max-w-[62ch]">
             O painel é calculado das movimentações de gado registradas. Cadastre os lotes e diga em que piquete cada um está: nenhum número aqui é estimado.
           </p>
-          <Link to="/rebanho" className="btn btn-pri">
-            <Icon name="plus" />
-            Cadastrar lote
-          </Link>
+          {canEdit ? (
+            <Link to="/rebanho" className="btn btn-pri">
+              <Icon name="plus" />
+              Cadastrar lote
+            </Link>
+          ) : null}
         </section>
       ) : (
         <section className="card flex flex-col gap-3" aria-label="Onde está cada lote">
@@ -221,9 +226,11 @@ export function Painel() {
         <section className="card flex flex-col items-start gap-3">
           <h2 className="h2">Nenhum módulo montado</h2>
           <p className="k m-0 max-w-[62ch]">Módulo é o grupo de piquetes por onde um lote roda. Monte os seus para acompanhar a ordem do rodízio.</p>
-          <Link to="/modulos" className="btn">
-            Montar módulos
-          </Link>
+          {canEdit ? (
+            <Link to="/modulos" className="btn">
+              Montar módulos
+            </Link>
+          ) : null}
         </section>
       )}
 

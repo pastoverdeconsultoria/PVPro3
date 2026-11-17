@@ -294,7 +294,7 @@ describe('membro da fazenda', () => {
 describe('troca do link', () => {
   it('quem não tem vínculo não troca; o dono troca e o link antigo para de valer', async () => {
     await as(db, bruno, async () => {
-      expect(await errorOf(() => db.query('select public.rotate_share_token($1)', [faz.farm.id]))).toMatch(/não tem acesso/);
+      expect(await errorOf(() => db.query('select public.rotate_share_token($1)', [faz.farm.id]))).toMatch(/não pode trocar o link/);
     });
     let novo = '';
     await as(db, ana, async () => {

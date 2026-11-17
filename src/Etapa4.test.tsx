@@ -190,21 +190,21 @@ describe('fazenda aberta: dados e acesso', () => {
     await user.type(within(form).getByLabelText('Dar acesso pelo e-mail'), 'ninguem@exemplo.test');
     await user.click(within(form).getByRole('button', { name: 'Dar acesso' }));
     expect((await within(form).findByRole('status')).textContent).toMatch(/Convite criado.*Criar conta/);
-    expect(await within(acesso).findByText('convidado · ainda não criou a conta')).toBeTruthy();
+    expect(await within(acesso).findByText('convidado · leitura + campo · ainda não criou a conta')).toBeTruthy();
     await user.click(within(acesso).getByRole('button', { name: 'Cancelar o convite de ninguem@exemplo.test' }));
     await user.click(within(acesso).getByRole('button', { name: 'Cancelar convite' }));
-    await waitFor(() => expect(within(acesso).queryByText('convidado · ainda não criou a conta')).toBeNull());
+    await waitFor(() => expect(within(acesso).queryByText('convidado · leitura + campo · ainda não criou a conta')).toBeNull());
 
     await user.type(within(form).getByLabelText('Dar acesso pelo e-mail'), 'bruno@exemplo.test');
     await user.click(within(form).getByRole('button', { name: 'Dar acesso' }));
-    expect(await within(acesso).findByText('acesso completo')).toBeTruthy();
+    expect(await within(acesso).findByText('leitura + campo')).toBeTruthy();
     expect(within(form).getByRole('status').textContent).toMatch(/bruno@exemplo.test já tinha conta/);
 
     // Tirar o acesso pede confirmação.
     await user.click(within(acesso).getByRole('button', { name: 'Tirar o acesso de bruno@exemplo.test' }));
     expect(s().members).toHaveLength(2);
     await user.click(within(acesso).getByRole('button', { name: 'Tirar acesso' }));
-    await waitFor(() => expect(within(acesso).queryByText('acesso completo')).toBeNull());
+    await waitFor(() => expect(within(acesso).queryByText('leitura + campo')).toBeNull());
   });
 
   it('banco sem a migração avisa em vez de quebrar', async () => {

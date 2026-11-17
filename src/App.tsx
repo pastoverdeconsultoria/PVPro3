@@ -2,10 +2,11 @@ import { Navigate, Outlet, Route, Routes, useMatch } from 'react-router-dom';
 import { Shell } from './components/Shell';
 import { lazyScreen } from './lib/lazyScreen';
 import { Caderno } from './pages/Caderno';
+import { Campo } from './pages/Campo';
 import { CadernoPublico } from './pages/CadernoPublico';
 import { Clima } from './pages/Clima';
 import { Fazendas } from './pages/Fazendas';
-import { Login } from './pages/Login';
+import { Login, NovaSenha } from './pages/Login';
 import { Mapa } from './pages/Mapa';
 import { Modulos } from './pages/Modulos';
 import { Painel } from './pages/Painel';
@@ -20,6 +21,7 @@ const NovaFazenda = lazyScreen(() => import('./pages/NovaFazenda'));
 
 export function App() {
   const phase = useApp((s) => s.phase);
+  const recovery = useApp((s) => s.passwordRecovery);
   // O link do caderno abre sem login, esteja ou não alguém com conta neste aparelho.
   const notebook = useMatch('/c/:token');
   if (notebook?.params.token) return <CadernoPublico token={notebook.params.token} />;
@@ -32,6 +34,7 @@ export function App() {
     );
   }
   if (phase === 'signedOut') return <Login />;
+  if (recovery) return <NovaSenha />;
 
   return (
     <Routes>
@@ -45,6 +48,7 @@ export function App() {
           <Route path="rebanho" element={<Rebanho />} />
           <Route path="clima" element={<Clima />} />
           <Route path="caderno" element={<Caderno />} />
+          <Route path="campo" element={<Campo />} />
           <Route path="analise" element={<Analise />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

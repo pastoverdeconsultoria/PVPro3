@@ -106,13 +106,17 @@ export interface Fertilization {
 export interface FarmMember {
   userId: string;
   email: string;
-  role: 'owner' | 'member';
+  role: FarmRole;
 }
+
+/** Dono, acesso completo, ou leitura + campo (vê tudo, grava só troca de gado, pesagem e chuva). */
+export type FarmRole = 'owner' | 'member' | 'viewer';
 
 /** Convite ainda não usado: o e-mail ainda não criou conta. */
 export interface FarmInvite {
   id: string;
   email: string;
+  role: 'member' | 'viewer';
   createdAt: string;
 }
 
@@ -164,6 +168,8 @@ export interface FarmData {
   fertilizations: Fertilization[];
   /** Falso quando o banco ainda não tem adubação e membros (falta rodar o SQL da etapa 4). */
   fertilizationReady?: boolean;
+  /** Papel da conta nesta fazenda. Null quando o banco ainda não sabe dizer (vale como acesso completo). */
+  myRole?: FarmRole | null;
 }
 
 export interface NewFarm {
@@ -234,7 +240,9 @@ export interface Repo {
    * Dá acesso pelo e-mail. Só o dono. Conta que já existe entra na hora
    * ('member'); e-mail sem conta fica convidado ('invited') e pode se cadastrar.
    */
-  addMember(farmId: string, email: string): Promise<'member' | 'invited'>;
+  addMember(farmId: string, email: string, role: 'member' | 'viewer'): Promise<'member' | 'invited'>;
+  /** Troca entre acesso completo e leitura + campo. Só o dono. */
+  setMemberRole(farmId: string, userId: string, role: 'member' | 'viewer'): Promise<void>;
   /** Tira o acesso (de forma suave). Só o dono, e nunca o próprio. */
   removeMember(farmId: string, userId: string): Promise<void>;
   /** Convites ainda não usados. Só o dono vê; os outros recebem lista vazia. */
@@ -253,6 +261,12 @@ export interface Auth {
   /** Devolve `true` quando o Supabase exige confirmar o e-mail antes de entrar. */
   signUp(email: string, password: string): Promise<{ needsConfirmation: boolean }>;
   signOut(): Promise<void>;
+  /** Manda o e-mail com o link para criar senha nova. */
+  requestPasswordReset(email: string): Promise<void>;
+  /** Grava a senha nova da conta logada (depois de abrir o link do e-mail). */
+  updatePassword(password: string): Promise<void>;
+  /** Avisa quando a pessoa chegou pelo link de "esqueci a senha". */
+  onPasswordRecovery(listener: () => void): () => void;
 }
 
 /**

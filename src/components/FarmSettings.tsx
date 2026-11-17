@@ -1,15 +1,16 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useApp } from '../state/AppContext';
+import { useApp, useCanEdit } from '../state/AppContext';
 import { Actions, ErrorText, Field, useAction } from './ui';
 
 /** Dados da fazenda aberta e quem tem acesso a ela. Fica na tela Fazendas. */
 export function FarmSettings() {
   const farm = useApp((s) => s.data?.farm);
   const ready = useApp((s) => s.data?.fertilizationReady !== false);
+  const canEdit = useCanEdit();
   if (!farm) return null;
   return (
     <>
-      <RenameFarm key={farm.id} name={farm.name} municipality={farm.municipality ?? ''} />
+      {canEdit ? <RenameFarm key={farm.id} name={farm.name} municipality={farm.municipality ?? ''} /> : null}
       {ready ? (
         <Members />
       ) : (
@@ -69,7 +70,9 @@ function Members() {
   const addMember = useApp((s) => s.addMember);
   const removeMember = useApp((s) => s.removeMember);
   const cancelInvite = useApp((s) => s.cancelInvite);
+  const setMemberRole = useApp((s) => s.setMemberRole);
   const [email, setEmail] = useState('');
+  const [role, setRole] = useState<'member' | 'viewer'>('viewer');
   const [done, setDone] = useState<{ email: string; kind: 'member' | 'invited' } | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
   const load = useAction();
@@ -95,10 +98,21 @@ function Members() {
               <span className="flex min-w-0 flex-col">
                 <span className="truncate text-sm">{m.email || 'conta sem e-mail'}</span>
                 <span className="k text-xs">
-                  {m.role === 'owner' ? 'dono' : 'acesso completo'}
+                  {ROLE_LABEL[m.role]}
                   {m.userId === me ? ' · você' : ''}
                 </span>
               </span>
+              {owner && m.userId !== me && m.role !== 'owner' && confirm !== m.userId ? (
+                <button
+                  type="button"
+                  className="btn shrink-0 px-3 text-[13px]"
+                  disabled={remove.busy}
+                  aria-label={`${m.role === 'viewer' ? 'Dar acesso completo a' : 'Deixar só leitura e campo para'} ${m.email}`}
+                  onClick={() => void remove.run(() => setMemberRole(m.userId, m.role === 'viewer' ? 'member' : 'viewer'))}
+                >
+                  {m.role === 'viewer' ? 'Completo' : 'Só leitura'}
+                </button>
+              ) : null}
               {owner && m.userId !== me ? (
                 confirm === m.userId ? (
                   <span className="flex shrink-0 gap-1.5">
@@ -122,7 +136,7 @@ function Members() {
                 <li key={i.id} className="flex items-center justify-between gap-3 border-t border-line py-2">
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate text-sm">{i.email}</span>
-                    <span className="text-xs text-warn">convidado · ainda não criou a conta</span>
+                    <span className="text-xs text-warn">convidado · {ROLE_LABEL[i.role]} · ainda não criou a conta</span>
                   </span>
                   {confirm === i.id ? (
                     <span className="flex shrink-0 gap-1.5">
@@ -159,7 +173,7 @@ function Members() {
             setDone(null);
             const sent = email.trim();
             void add.run(
-              () => addMember(sent),
+              () => addMember(sent, role),
               (kind) => {
                 setEmail('');
                 setDone({ email: sent, kind });
@@ -167,9 +181,22 @@ function Members() {
             );
           }}
         >
-          <Field label="Dar acesso pelo e-mail" hint="A pessoa vê e grava tudo desta fazenda, e só desta. Se ela ainda não tem conta, fica convidada: só e-mail convidado consegue criar conta no app.">
+          <Field label="Dar acesso pelo e-mail" hint="A pessoa só enxerga esta fazenda. Se ela ainda não tem conta, fica convidada: só e-mail convidado consegue criar conta no app.">
             {(id) => <input id={id} className="in" type="email" inputMode="email" autoCapitalize="none" placeholder="email@exemplo.com" value={email} onChange={(e) => setEmail(e.target.value)} />}
           </Field>
+          <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Tipo de acesso">
+            {(['viewer', 'member'] as const).map((r) => (
+              <label key={r} className={`flex min-h-[44px] cursor-pointer items-start gap-2.5 rounded-[12px] border px-3 py-2 ${role === r ? 'border-lime' : 'border-line2'}`}>
+                <input type="radio" name="tipo-acesso" className="mt-1 accent-[#C6F24E]" checked={role === r} onChange={() => setRole(r)} />
+                <span className="flex flex-col">
+                  <span className="text-sm font-semibold">{r === 'viewer' ? 'Leitura + campo (cliente)' : 'Acesso completo'}</span>
+                  <span className="k text-xs">
+                    {r === 'viewer' ? 'Vê tudo. Grava só troca de gado, chuva e pesagem, pela tela Campo.' : 'Vê e muda tudo: lotes, módulos, piquetes, caderno e adubação.'}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
           <ErrorText>{add.error}</ErrorText>
           {done ? (
             <p className="note m-0" role="status">
@@ -194,3 +221,5 @@ function Members() {
     </section>
   );
 }
+
+const ROLE_LABEL = { owner: 'dono', member: 'acesso completo', viewer: 'leitura + campo' } as const;

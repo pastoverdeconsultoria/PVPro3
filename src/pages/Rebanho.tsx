@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { Icon } from '../components/Icon';
 import { ChangeSheet, HistorySheet, MoveSheet, NewLotSheet, WeighSheet } from '../components/LotSheets';
@@ -5,12 +6,13 @@ import { ErrorText, useAction } from '../components/ui';
 import { differs, locationText, type LotView } from '../lib/farm/farmView';
 import { gmdText, nf } from '../lib/format';
 import { formatBr, formatDayMonth } from '../lib/lots/dates';
-import { useApp, useFarmView } from '../state/AppContext';
+import { useApp, useCanEdit, useFarmView } from '../state/AppContext';
 
 type Open = { kind: 'novo' } | { kind: 'mover' | 'pesar' | 'alterar' | 'historico'; lotId: string } | null;
 
 export function Rebanho() {
   const fv = useFarmView();
+  const canEdit = useCanEdit();
   // O seletor devolve a lista como está no estado; filtrar dentro dele criaria uma lista nova a cada leitura.
   const allLots = useApp((s) => s.data?.lots);
   const deletedLots = allLots?.filter((l) => l.deletedAt) ?? [];
@@ -31,10 +33,16 @@ export function Rebanho() {
           <h1 className="big m-0 text-[30px] desk:text-[34px]">Rebanho</h1>
           <p className="k m-0 max-w-[70ch]">UA = cabeças × peso médio ÷ 450. Vale a última pesagem; sem pesagem, o peso do cadastro.</p>
         </div>
-        <button type="button" className="btn btn-pri" onClick={() => setOpen({ kind: 'novo' })}>
-          <Icon name="plus" />
-          Novo lote
-        </button>
+        <Link to="/campo" className="btn">
+          <Icon name="field" />
+          Campo
+        </Link>
+        {canEdit ? (
+          <button type="button" className="btn btn-pri" onClick={() => setOpen({ kind: 'novo' })}>
+            <Icon name="plus" />
+            Novo lote
+          </button>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap gap-3 desk:gap-4">
@@ -70,12 +78,12 @@ export function Rebanho() {
       ) : (
         <div className="grid gap-3 desk:grid-cols-2 desk:gap-4 min-[1200px]:grid-cols-3">
           {view.lots.map((l) => (
-            <LotCard key={l.lot.id} l={l} where={locationText(l, fv.paddockName, formatBr)} onOpen={(kind) => setOpen({ kind, lotId: l.lot.id })} />
+            <LotCard key={l.lot.id} l={l} canEdit={canEdit} where={locationText(l, fv.paddockName, formatBr)} onOpen={(kind) => setOpen({ kind, lotId: l.lot.id })} />
           ))}
         </div>
       )}
 
-      {deletedLots.length ? (
+      {deletedLots.length && canEdit ? (
         <details className="card">
           <summary className="cursor-pointer font-display text-[17px] font-semibold">Lotes excluídos ({deletedLots.length})</summary>
           <ErrorText>{restore.error}</ErrorText>
@@ -101,7 +109,7 @@ export function Rebanho() {
   );
 }
 
-function LotCard({ l, where, onOpen }: { l: LotView; where: string; onOpen: (kind: 'mover' | 'pesar' | 'alterar' | 'historico') => void }) {
+function LotCard({ l, where, canEdit, onOpen }: { l: LotView; where: string; canEdit: boolean; onOpen: (kind: 'mover' | 'pesar' | 'alterar' | 'historico') => void }) {
   const inPaddock = l.location.kind === 'no_piquete';
   const empty = l.heads <= 0;
   const supplKg = l.supplPct > 0 ? (l.supplPct / 100) * l.weightKg : 0;
@@ -145,16 +153,18 @@ function LotCard({ l, where, onOpen }: { l: LotView; where: string; onOpen: (kin
         </p>
       ) : null}
 
-      <div className="mt-auto grid grid-cols-2 gap-2 pt-1 min-[400px]:grid-cols-4">
+      <div className={`mt-auto grid gap-2 pt-1 ${canEdit ? 'grid-cols-2 min-[400px]:grid-cols-4' : 'grid-cols-3'}`}>
         <button type="button" className="btn btn-pri px-2" disabled={empty} onClick={() => onOpen('mover')}>
           Mover
         </button>
         <button type="button" className="btn px-2" disabled={empty} onClick={() => onOpen('pesar')}>
           Pesar
         </button>
-        <button type="button" className="btn px-2" onClick={() => onOpen('alterar')}>
-          Alterar
-        </button>
+        {canEdit ? (
+          <button type="button" className="btn px-2" onClick={() => onOpen('alterar')}>
+            Alterar
+          </button>
+        ) : null}
         <button type="button" className="btn px-2" onClick={() => onOpen('historico')}>
           Histórico
         </button>

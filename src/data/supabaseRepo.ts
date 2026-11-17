@@ -24,7 +24,10 @@ import {
   rowToReport,
   rowToWaterPoint,
 } from './rows';
-import { OFFLINE_MESSAGE, RepoError, type Auth, type FarmData, type NotebookApi, type Repo, type User } from './types';
+import { OFFLINE_MESSAGE, RepoError, type Auth, type FarmData, type FarmRole, type NotebookApi, type Repo, type User } from './types';
+
+/** Volta do link de "esqueci a senha": o app abre direto na tela de senha nova. */
+export const RECOVERY_PARAM = 'senha';
 
 /** Espera máxima pela resposta do servidor (CLAUDE.md: 8 s), para a cópia salva poder entrar. */
 export const TIMEOUT_MS = 8000;
@@ -62,7 +65,7 @@ function toRepoError(e: any, doing: string): RepoError {
     /abort|failed to fetch|networkerror|load failed|fetch failed/i.test(message);
   if (network) return new RepoError(OFFLINE_MESSAGE, true);
   if (e?.code === '42501' && /row-level security|permission denied/i.test(message)) {
-    return new RepoError('Sua conta não tem acesso a essa fazenda.');
+    return new RepoError(/row-level security/i.test(message) ? 'Sua conta não tem permissão para gravar isso nesta fazenda.' : 'Sua conta não tem acesso a essa fazenda.');
   }
   // Recusas escritas pelas funções do banco já vêm em português, prontas para a tela.
   if (message && ['22023', '42501', '53400'].includes(e?.code)) return new RepoError(message);
@@ -80,7 +83,9 @@ function authMessage(message: string): string {
     const n = message.match(/at least (\d+)/i)?.[1];
     return n ? `A senha precisa ter pelo menos ${n} caracteres.` : 'Senha fraca. Use pelo menos 8 caracteres, misturando letras e números.';
   }
-  if (/rate limit|too many/i.test(message)) return 'Muitas tentativas seguidas. Espere um minuto e tente de novo.';
+  if (/rate limit|too many|security purposes/i.test(message)) return 'Muitas tentativas seguidas. Espere alguns minutos e tente de novo.';
+  if (/should be different|same password/i.test(message)) return 'A senha nova precisa ser diferente da antiga.';
+  if (/session missing|auth session/i.test(message)) return 'O link expirou. Peça um novo em "Esqueci a senha".';
   if (/signups? not allowed|signup is disabled/i.test(message)) return 'A criação de contas está desligada. Peça ao consultor para liberar o seu acesso.';
   if (/unable to validate email|invalid email|invalid format/i.test(message)) return 'E-mail inválido.';
   return message;
@@ -144,7 +149,15 @@ export function createSupabaseRepo(client: SupabaseClient): Repo {
             missing();
             return [] as Record<string, unknown>[];
           });
-        const [farm, paddocks, water, lots, modules, compositions, events, reports, rain, fertilizations] = await Promise.all([
+        // Papel da conta na fazenda. Sem a migração de leitura, todo membro edita tudo.
+        const myRole = (async (): Promise<FarmRole | null> => {
+          const { data, error } = await client.rpc('my_farm_role', { p_farm: farmId });
+          if (!error) return (data as FarmRole | null) ?? null;
+          const err = toRepoError(error, doing);
+          if (err.schemaMissing) return null;
+          throw err;
+        })();
+        const [farm, paddocks, water, lots, modules, compositions, events, reports, rain, fertilizations, role] = await Promise.all([
           client.from('farms').select(COLS.farms).eq('id', farmId).maybeSingle(),
           fetchAll(() => live('paddocks').order('sort').order('id'), doing),
           fetchAll(() => live('water_points').order('id'), doing),
@@ -160,6 +173,7 @@ export function createSupabaseRepo(client: SupabaseClient): Repo {
           optional(fetchAll(() => live('field_reports').order('created_at').order('id'), doing)),
           optional(fetchAll(() => live('rain_records').order('rain_date').order('id'), doing)),
           optional(fetchAll(() => live('fertilizations').order('applied_on').order('id'), doing), () => (fertilizationReady = false)),
+          myRole,
         ]);
         check(farm.error, doing);
         if (!farm.data) throw new RepoError('Fazenda não encontrada ou sua conta não tem acesso a ela.');
@@ -176,6 +190,7 @@ export function createSupabaseRepo(client: SupabaseClient): Repo {
           notebookReady,
           fertilizations: fertilizations.map(rowToFertilization),
           fertilizationReady,
+          myRole: role,
         };
       }),
 
@@ -317,12 +332,22 @@ export function createSupabaseRepo(client: SupabaseClient): Repo {
         return ((data as Record<string, unknown>[] | null) ?? []).map(rowToMember);
       }),
 
-    addMember: (farmId, email) =>
+    addMember: (farmId, email, role) =>
       run('dar acesso', async () => {
-        const { data, error } = await client.rpc('add_farm_member', { p_farm: farmId, p_email: email });
+        let { data, error } = await client.rpc('add_farm_member', { p_farm: farmId, p_email: email, p_role: role });
+        // Banco sem a migração de leitura: a função ainda não tem o papel.
+        if (error && (error as { code?: string }).code === 'PGRST202') {
+          ({ data, error } = await client.rpc('add_farm_member', { p_farm: farmId, p_email: email }));
+        }
         check(error, 'dar acesso');
         // Antes da migração de convites a função devolvia o id da conta.
         return data === 'invited' ? 'invited' : 'member';
+      }),
+
+    setMemberRole: (farmId, userId, role) =>
+      run('mudar o acesso', async () => {
+        const { error } = await client.rpc('set_farm_member_role', { p_farm: farmId, p_user: userId, p_role: role });
+        check(error, 'mudar o acesso');
       }),
 
     listInvites: (farmId) =>
@@ -330,7 +355,7 @@ export function createSupabaseRepo(client: SupabaseClient): Repo {
         try {
           const { data, error } = await client.rpc('list_farm_invites', { p_farm: farmId });
           check(error, 'ler os convites');
-          return ((data as Record<string, unknown>[] | null) ?? []).map((r) => ({ id: String(r.id), email: String(r.email), createdAt: String(r.created_at) }));
+          return ((data as Record<string, unknown>[] | null) ?? []).map((r) => ({ id: String(r.id), email: String(r.email), role: r.role === 'member' ? 'member' : 'viewer', createdAt: String(r.created_at) }));
         } catch (e) {
           if (toRepoError(e, 'ler os convites').schemaMissing) return [];
           throw e;
@@ -440,6 +465,37 @@ export function createSupabaseAuth(client: SupabaseClient): Auth {
     signOut: async () => {
       // `local`: sai neste aparelho mesmo sem sinal.
       await client.auth.signOut({ scope: 'local' });
+    },
+
+    requestPasswordReset: async (email) => {
+      try {
+        const { error } = await client.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/?${RECOVERY_PARAM}=nova`,
+        });
+        if (error) throw error;
+      } catch (e) {
+        const err = toRepoError(e, 'mandar o link');
+        throw err.offline ? err : new RepoError(authMessage(String((e as Error)?.message ?? '')));
+      }
+    },
+
+    updatePassword: async (password) => {
+      try {
+        const { error } = await client.auth.updateUser({ password });
+        if (error) throw error;
+      } catch (e) {
+        const err = toRepoError(e, 'gravar a senha');
+        throw err.offline ? err : new RepoError(authMessage(String((e as Error)?.message ?? '')));
+      }
+    },
+
+    onPasswordRecovery: (listener) => {
+      const { data } = client.auth.onAuthStateChange((event) => {
+        if (event === 'PASSWORD_RECOVERY') listener();
+      });
+      // O evento pode ter disparado antes de alguém escutar; o endereço de volta marca o caso.
+      if (new URLSearchParams(window.location.search).get(RECOVERY_PARAM) === 'nova') queueMicrotask(listener);
+      return () => data.subscription.unsubscribe();
     },
   };
 }

@@ -9,7 +9,7 @@ import { nf } from '../lib/format';
 import { pointInPolygon } from '../lib/geo';
 import { formatBr, formatDayMonth, todayLocal } from '../lib/lots/dates';
 import { geoProblem, useGeolocation } from '../lib/useGeolocation';
-import { useApp, useFarmView, type FarmScreenData } from '../state/AppContext';
+import { useApp, useCanEdit, useFarmView, type FarmScreenData } from '../state/AppContext';
 
 export function Mapa() {
   const fv = useFarmView();
@@ -156,6 +156,7 @@ const dias = (n: number) => `${n} ${n === 1 ? 'dia' : 'dias'}`;
  * informações. O acumulado do ano não entra aqui (fica na Análise).
  */
 function PaddockCard({ p, fv, canMove, onEdit, onMove }: { p: PaddockView; fv: FarmScreenData; canMove: boolean; onEdit: () => void; onMove: () => void }) {
+  const canEdit = useCanEdit();
   const occupied = p.occupants.length > 0;
   const module = fv.moduleOf.get(p.paddock.id);
   const meta = [`${nf(p.paddock.areaHa, 2)} ha`, p.paddock.species ?? 'capim não informado', module?.name ?? (p.paddock.isGrazing ? 'sem módulo' : null)].filter(Boolean);
@@ -228,9 +229,11 @@ function PaddockCard({ p, fv, canMove, onEdit, onMove }: { p: PaddockView; fv: F
             Mover lote para cá
           </button>
         ) : null}
-        <button type="button" className="btn" onClick={onEdit}>
-          Editar piquete
-        </button>
+        {canEdit ? (
+          <button type="button" className="btn" onClick={onEdit}>
+            Editar piquete
+          </button>
+        ) : null}
       </Actions>
     </section>
   );

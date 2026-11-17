@@ -16,6 +16,7 @@ import { pointInPolygon } from '../lib/geo';
 import { geoProblem, useGeolocation } from '../lib/useGeolocation';
 import { useOnline } from '../lib/useOnline';
 import { useNotebookApi } from '../state/AppContext';
+import { Back, BigButton, Emoji, Message, NumPad, Result, Step, WhenPicker, type When } from '../components/fieldUi';
 
 /** Intervalo entre tentativas de envio com a página aberta (CLAUDE.md: a cada 2 min). */
 export const SYNC_INTERVAL_MS = 120_000;
@@ -23,7 +24,6 @@ export const SYNC_INTERVAL_MS = 120_000;
 const CONTEXT_MAX_AGE_MS = 15 * 60_000;
 
 type Screen = 'name' | 'home' | 'rain' | 'cattle' | 'sending' | 'sent' | 'saved' | 'rejected';
-type When = 'hoje' | 'ontem' | 'outro';
 
 /** Um relato em uma frase curta. */
 function reportText(r: NotebookReport, ctx: NotebookContext | null): string {
@@ -489,14 +489,6 @@ export function CadernoPublico({ token }: { token: string }) {
   );
 }
 
-function Emoji({ children, size = '', inline = false }: { children: string; size?: string; inline?: boolean }) {
-  return (
-    <span aria-hidden="true" className={`${inline ? '' : 'block text-center'} leading-none ${size}`}>
-      {children}
-    </span>
-  );
-}
-
 function Frame({ farm, online, pending, children }: { farm: string; online: boolean; pending: number; children: ReactNode }) {
   return (
     <div className="min-h-[100dvh]">
@@ -522,108 +514,3 @@ function Frame({ farm, online, pending, children }: { farm: string; online: bool
   );
 }
 
-function Message({ emoji, title, text }: { emoji: string; title: string; text: string }) {
-  return (
-    <section className="card mt-6 flex flex-col gap-2 text-center" role="alert">
-      <Emoji size="text-5xl">{emoji}</Emoji>
-      <h2 className="m-0 font-display text-[22px] font-bold">{title}</h2>
-      <p className="k m-0 text-base">{text}</p>
-    </section>
-  );
-}
-
-function Result({ emoji, title, text, onAgain }: { emoji: string; title: string; text: string; onAgain: () => void }) {
-  return (
-    <div className="flex flex-col gap-4 pt-8 text-center" role="status">
-      <Emoji size="text-7xl">{emoji}</Emoji>
-      <h2 className="m-0 font-display text-[28px] font-bold">{title}</h2>
-      <p className="m-0 px-2 text-base text-muted">{text}</p>
-      <BigButton onClick={onAgain}>REGISTRAR OUTRA COISA</BigButton>
-    </div>
-  );
-}
-
-function BigButton({ children, onClick, disabled, tone = 'lime' }: { children: ReactNode; onClick: () => void; disabled?: boolean; tone?: 'lime' | 'blue' }) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={`mt-1 min-h-[62px] w-full cursor-pointer rounded-[20px] border-0 font-display text-[22px] font-extrabold text-ink disabled:cursor-not-allowed disabled:opacity-40 ${tone === 'blue' ? 'bg-proj' : 'bg-lime'}`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Back({ onClick }: { onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick} className="min-h-[44px] cursor-pointer self-start border-0 bg-transparent p-0 text-base font-medium text-muted">
-      ← Voltar
-    </button>
-  );
-}
-
-function Step({ n, children }: { n: number; children: ReactNode }) {
-  return (
-    <h3 className="m-0 mt-1 text-[18px] font-bold">
-      {n}. {children}
-    </h3>
-  );
-}
-
-/** Hoje, ontem ou outro dia: o vaqueiro costuma avisar depois, então a data é sempre perguntada. */
-function WhenPicker({ when, onWhen, otherDay, onOtherDay, today }: { when: When; onWhen: (w: When) => void; otherDay: string; onOtherDay: (d: string) => void; today: string }) {
-  const label: Record<When, string> = { hoje: '☀️ Hoje', ontem: '🌙 Ontem', outro: '📅 Outro' };
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="grid grid-cols-3 gap-2" role="group" aria-label="Quando foi">
-        {(['hoje', 'ontem', 'outro'] as const).map((w) => (
-          <button
-            key={w}
-            type="button"
-            aria-pressed={when === w}
-            onClick={() => onWhen(w)}
-            className={`min-h-[54px] cursor-pointer rounded-[16px] border-2 px-1 text-[16px] font-bold ${when === w ? 'border-lime bg-lime text-ink' : 'border-line2 bg-card text-text'}`}
-          >
-            {label[w]}
-          </button>
-        ))}
-      </div>
-      {when === 'outro' ? (
-        <input className="in min-h-[54px] text-center text-[18px]" type="date" aria-label="Data" max={today} value={otherDay} onChange={(e) => onOtherDay(e.target.value)} />
-      ) : null}
-    </div>
-  );
-}
-
-/** Teclado numérico grande, sem abrir o teclado do celular. */
-function NumPad({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '0', '⌫'];
-  const press = (k: string) => {
-    if (k === '⌫') return onChange(value.slice(0, -1));
-    if (k === ',') {
-      if (value.includes(',') || value === '') return;
-      return onChange(`${value},`);
-    }
-    // Até três algarismos antes da vírgula e um depois (0,1 a 500 mm).
-    const [int, dec] = value.split(',');
-    if (dec !== undefined ? dec.length >= 1 : int.length >= 3) return;
-    onChange(value + k);
-  };
-  return (
-    <div className="grid grid-cols-3 gap-2" role="group" aria-label="Teclado numérico">
-      {keys.map((k) => (
-        <button
-          key={k}
-          type="button"
-          aria-label={k === '⌫' ? 'Apagar' : k === ',' ? 'Vírgula' : k}
-          onClick={() => press(k)}
-          className="min-h-[58px] cursor-pointer rounded-[16px] border border-line2 bg-card font-display text-[26px] font-bold text-text active:bg-line"
-        >
-          {k}
-        </button>
-      ))}
-    </div>
-  );
-}

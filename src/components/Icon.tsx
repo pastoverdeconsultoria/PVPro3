@@ -37,6 +37,13 @@ const PATHS = {
       <rect x="14" y="14" width="7" height="7" rx="1.5" />
     </>
   ),
+  // Prancheta: a tela Campo (o caderno dentro do app).
+  field: (
+    <>
+      <rect x="5" y="4" width="14" height="17" rx="2" />
+      <path d="M9 4V3h6v1M9 11l2 2 4-4M9 17h6" />
+    </>
+  ),
   plus: <path d="M12 5v14M5 12h14" />,
   arrow: <path d="M5 12h14M13 6l6 6-6 6" />,
   close: <path d="M6 6l12 12M18 6 6 18" />,

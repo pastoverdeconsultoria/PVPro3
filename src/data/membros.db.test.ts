@@ -36,7 +36,8 @@ const createFarm = (input: NewFarm) => {
 };
 const members = async () => (await db.query<R>('select * from public.list_farm_members($1)', [faz.farm.id])).rows.map(rowToMember);
 const count = async (table: string) => Number((await db.query<R>(`select count(*) as n from public.${table}`)).rows[0].n);
-const add = (email: string) => db.query('select public.add_farm_member($1, $2)', [faz.farm.id, email]);
+// Acesso completo: o padrão do convite é leitura + campo, que não registra adubação.
+const add = (email: string) => db.query('select public.add_farm_member($1, $2, $3)', [faz.farm.id, email, 'member']);
 const remove = (user: string) => db.query('select public.remove_farm_member($1, $2)', [faz.farm.id, user]);
 
 beforeAll(async () => {

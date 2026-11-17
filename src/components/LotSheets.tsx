@@ -6,7 +6,7 @@ import { formatBr, todayLocal } from '../lib/lots/dates';
 import { orderEvents } from '../lib/lots/deriveLot';
 import { CATEGORIES, describeEvent, ENTRY_REASONS, EXIT_REASONS } from '../lib/lots/describe';
 import type { LotEvent } from '../lib/lots/types';
-import { useApp, useFarmView } from '../state/AppContext';
+import { useApp, useCanEdit, useFarmView } from '../state/AppContext';
 import { Actions, ErrorText, Field, Sheet, useAction } from './ui';
 
 // Formulários de campo. Ficam no pacote principal, nunca em chunk sob demanda.
@@ -338,6 +338,7 @@ export function HistorySheet({ lot, onClose }: { lot: LotView; onClose: () => vo
   const restoreEvent = useApp((s) => s.restoreEvent);
   const deleteLot = useApp((s) => s.deleteLot);
   const changeEventDate = useApp((s) => s.changeEventDate);
+  const canEdit = useCanEdit();
   const [confirm, setConfirm] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ id: string; date: string } | null>(null);
   const { busy, error, run } = useAction();
@@ -370,7 +371,7 @@ export function HistorySheet({ lot, onClose }: { lot: LotView; onClose: () => vo
                 </span>
               ) : null}
             </span>
-            <span className="flex shrink-0 items-center gap-1.5">
+            {canEdit ? <span className="flex shrink-0 items-center gap-1.5">
             {editing?.id === e.id || confirm === e.id ? null : (
               <button type="button" className="btn min-h-[44px] px-3 text-[13px]" aria-label={`Corrigir a data: ${text(e)}`} onClick={() => setEditing({ id: e.id, date: e.date })}>
                 Data
@@ -390,13 +391,17 @@ export function HistorySheet({ lot, onClose }: { lot: LotView; onClose: () => vo
                 Apagar
               </button>
             )}
-            </span>
+            </span> : null}
           </li>
         ))}
       </ul>
-      <p className="k m-0 text-xs">Apagar ou corrigir a data de uma mudança de piquete leva a saída e a entrada juntas. Nada some de vez: o registro antigo fica em Apagados.</p>
+      {canEdit ? (
+        <p className="k m-0 text-xs">Apagar ou corrigir a data de uma mudança de piquete leva a saída e a entrada juntas. Nada some de vez: o registro antigo fica em Apagados.</p>
+      ) : (
+        <p className="k m-0 text-xs">Para corrigir um registro, fale com o consultor. O que você acabou de gravar na tela Campo dá para desfazer lá mesmo.</p>
+      )}
 
-      {deleted.length ? (
+      {deleted.length && canEdit ? (
         <details>
           <summary className="cursor-pointer text-sm font-semibold">Apagados ({deleted.length})</summary>
           <ul className="m-0 mt-2 flex list-none flex-col p-0" aria-label="Registros apagados">
@@ -415,7 +420,7 @@ export function HistorySheet({ lot, onClose }: { lot: LotView; onClose: () => vo
         </details>
       ) : null}
 
-      <div className="mt-2 flex flex-col gap-2 border-t border-line pt-3.5">
+      {canEdit ? <div className="mt-2 flex flex-col gap-2 border-t border-line pt-3.5">
         {confirm === 'lote' ? (
           <>
             <p className="m-0 text-sm">Excluir {lot.lot.name}? O lote sai das telas e o piquete fica livre. Dá para restaurar depois, em Rebanho.</p>
@@ -433,7 +438,7 @@ export function HistorySheet({ lot, onClose }: { lot: LotView; onClose: () => vo
             Excluir lote…
           </button>
         )}
-      </div>
+      </div> : null}
     </Sheet>
   );
 }

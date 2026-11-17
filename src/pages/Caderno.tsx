@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { Actions, ErrorText, Field, Sheet, useAction } from '../components/ui';
 import type { FieldReport } from '../data/types';
@@ -24,6 +25,17 @@ export function Caderno() {
   }, [refreshReports]);
 
   if (!fv || !data) return null;
+  if (data.myRole === 'viewer') {
+    return (
+      <section className="card flex flex-col items-start gap-2.5" role="status">
+        <h1 className="h2">Caderno da equipe</h1>
+        <p className="k m-0 max-w-[62ch]">A revisão dos relatos do vaqueiro é com o consultor. Para registrar troca de gado, chuva ou pesagem, use a tela Campo.</p>
+        <Link to="/campo" className="btn btn-pri">
+          Abrir o Campo
+        </Link>
+      </section>
+    );
+  }
   const fresh = data.reports.filter((r) => r.status === 'novo');
   const done = data.reports.filter((r) => r.status !== 'novo').reverse().slice(0, 40);
   const current = editing ? data.reports.find((r) => r.id === editing && r.status === 'novo') : null;

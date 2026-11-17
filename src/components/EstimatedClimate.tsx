@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { dayAt, HISTORY_YEARS } from '../lib/climate/openMeteo';
 import { monthOffset } from '../lib/climate/water';
 import { monthLabel, rainByMonth } from '../lib/farm/rain';
@@ -88,38 +88,63 @@ export function EstimatedClimate() {
 
       <section className="card flex flex-col gap-3" aria-label="Chuva por mês">
         <h2 className="h2">Chuva por mês, 12 meses</h2>
-        <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
-          {months.map((m) => (
-            <li key={m.key} className="flex flex-col gap-1">
-              <div className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="font-semibold">{monthLabel(m.key)}</span>
-                <span className="flex items-baseline gap-3">
-                  <span>
-                    <span className="k text-xs">estimada </span>
-                    {nf(m.estimated, 0)}
-                  </span>
-                  <span className={m.real ? 'font-semibold text-lime' : 'text-unk'}>
-                    <span className="k text-xs font-normal">registrada </span>
-                    {m.real ? nf(m.real.mm, 0) : '—'}
-                  </span>
-                </span>
-              </div>
-              <div className="relative h-2 rounded-full bg-line" aria-hidden="true">
-                <i className="absolute inset-y-0 left-0 rounded-full bg-ramp-3" style={{ width: `${(m.estimated / max) * 100}%` }} />
-                {m.real ? <i className="absolute inset-y-0 left-0 rounded-full bg-lime/90" style={{ width: `${(m.real.mm / max) * 100}%`, height: '50%' }} /> : null}
-                {m.normal != null ? <i className="absolute -inset-y-0.5 w-0.5 bg-text" style={{ left: `${Math.min(100, (m.normal / max) * 100)}%` }} /> : null}
-              </div>
-              <span className="k text-xs">
-                normal {m.normal == null ? '—' : `${nf(m.normal, 0)} mm`}
-                {m.real ? ` · ${m.real.days} ${m.real.days === 1 ? 'dia' : 'dias'} com leitura` : ''}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <RainMonthsChart months={months} max={max} />
         <p className="k m-0 text-xs">
-          Em mm. Estimada: ERA5 pelo centroide ({nf(series.lat, 2)}; {nf(series.lon, 2)}), pelo Open-Meteo. Registrada: o que foi lido no pluviômetro. Traço branco: a normal, média dos últimos {HISTORY_YEARS} anos. No cálculo, a chuva registrada entra no lugar da estimada, dia a dia; mês com poucos dias de leitura fica quase todo na estimada.
+          Toque no mês para ver os números. Em mm. Estimada: ERA5 pelo centroide ({nf(series.lat, 2)}; {nf(series.lon, 2)}), pelo Open-Meteo. Registrada: o que foi lido no pluviômetro. Traço branco: a normal, média dos últimos {HISTORY_YEARS} anos. No cálculo, a chuva registrada entra no lugar da estimada, dia a dia; mês com poucos dias de leitura fica quase todo na estimada.
         </p>
       </section>
+    </>
+  );
+}
+
+type RainMonth = { key: string; estimated: number; real: { mm: number; days: number } | null; normal: number | null };
+
+/**
+ * Barras verticais, um mês por coluna: verde-escuro a estimada, verde-limão a
+ * registrada, traço branco a normal. Tocar no mês mostra os números dele.
+ */
+function RainMonthsChart({ months, max }: { months: RainMonth[]; max: number }) {
+  const [picked, setPicked] = useState(months.length - 1);
+  const m = months[Math.min(picked, months.length - 1)];
+  const h = (v: number) => `${Math.max(0, Math.min(100, (v / max) * 100))}%`;
+  return (
+    <>
+      <div className="flex items-center gap-3 text-xs text-muted" aria-hidden="true">
+        <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-ramp-3" />estimada</span>
+        <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-lime" />registrada</span>
+        <span className="flex items-center gap-1.5"><i className="h-0.5 w-3 bg-text" />normal</span>
+      </div>
+      <ul className="m-0 flex h-[170px] list-none items-stretch gap-[3px] p-0">
+        {months.map((x, i) => (
+          <li key={x.key} className="flex min-w-0 flex-1">
+            <button
+              type="button"
+              aria-pressed={i === picked}
+              onClick={() => setPicked(i)}
+              className={`flex min-w-0 flex-1 cursor-pointer flex-col items-stretch gap-1 rounded-[8px] border-0 p-0 pb-0.5 text-text ${i === picked ? 'bg-line/60' : 'bg-transparent'}`}
+            >
+              <span className="sr-only">
+                {monthLabel(x.key)}: estimada {nf(x.estimated, 0)} mm, registrada {x.real ? `${nf(x.real.mm, 0)} mm, ${x.real.days} ${x.real.days === 1 ? 'dia' : 'dias'} com leitura` : '—'}, normal {x.normal == null ? '—' : `${nf(x.normal, 0)} mm`}
+              </span>
+              <span className="relative flex flex-1 items-end justify-center gap-[2px] px-[1px]" aria-hidden="true">
+                <i className="block w-1/2 max-w-[12px] rounded-t-[3px] bg-ramp-3" style={{ height: h(x.estimated) }} />
+                <i className={`block w-1/2 max-w-[12px] rounded-t-[3px] ${x.real ? 'bg-lime' : ''}`} style={{ height: x.real ? h(x.real.mm) : 0 }} />
+                {x.normal != null ? <i className="absolute inset-x-0 h-0.5 bg-text" style={{ bottom: h(x.normal) }} /> : null}
+              </span>
+              <span className={`text-center text-[10px] leading-3 ${i === picked ? 'font-semibold text-lime' : 'text-muted'}`} aria-hidden="true">
+                {monthLabel(x.key).slice(0, 3)}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <p className="m-0 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 rounded-[12px] bg-bg px-3 py-2 text-sm" role="status">
+        <b>{monthLabel(m.key)}</b>
+        <span><span className="k text-xs">estimada </span>{nf(m.estimated, 0)} mm</span>
+        <span className={m.real ? 'font-semibold text-lime' : 'text-unk'}><span className="k text-xs font-normal">registrada </span>{m.real ? `${nf(m.real.mm, 0)} mm` : '—'}</span>
+        <span><span className="k text-xs">normal </span>{m.normal == null ? '—' : `${nf(m.normal, 0)} mm`}</span>
+        {m.real ? <span className="k text-xs">{m.real.days} {m.real.days === 1 ? 'dia' : 'dias'} com leitura</span> : null}
+      </p>
     </>
   );
 }

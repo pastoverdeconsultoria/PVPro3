@@ -125,7 +125,12 @@ export interface AppState {
   renameFarm(input: { name: string; municipality: string }): Promise<Result<void>>;
   loadMembers(): Promise<Result<void>>;
   /** 'member': a conta já existia e entrou; 'invited': ficou o convite para a pessoa criar a conta. */
-  addMember(email: string): Promise<Result<'member' | 'invited'>>;
+  addMember(email: string, role?: 'member' | 'viewer'): Promise<Result<'member' | 'invited'>>;
+  setMemberRole(userId: string, role: 'member' | 'viewer'): Promise<Result<void>>;
+  /** A pessoa voltou pelo link de "esqueci a senha" e precisa escolher a senha nova. */
+  passwordRecovery: boolean;
+  requestPasswordReset(email: string): Promise<Result<void>>;
+  setNewPassword(password: string): Promise<Result<void>>;
   removeMember(userId: string): Promise<Result<void>>;
   cancelInvite(inviteId: string): Promise<Result<void>>;
   /** Envia o que ficou guardado sem sinal. Chamado ao abrir, quando o sinal volta e de tempos em tempos. */
@@ -321,8 +326,10 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
       staleSince: null,
       ...NO_CLIMATE,
       useCalibratedM: true,
+      passwordRecovery: false,
 
       async init() {
+        auth.onPasswordRecovery(() => set({ passwordRecovery: true }));
         auth.onChange((u) => void applyUser(u));
         await applyUser(await auth.currentUser());
       },
@@ -941,18 +948,45 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
         }
       },
 
-      async addMember(email) {
+      async addMember(email, role = 'viewer') {
         const farmId = get().farmId;
         if (!farmId) return fail('Nenhuma fazenda aberta.');
         const clean = email.trim();
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)) return fail('Informe um e-mail válido.');
         try {
-          const kind = await repo.addMember(farmId, clean);
+          const kind = await repo.addMember(farmId, clean, role);
           await get().loadMembers();
           return { ok: true, value: kind };
         } catch (e) {
           return fail(message(e, 'Não deu para dar acesso.'));
         }
+      },
+
+      async setMemberRole(userId, role) {
+        const farmId = get().farmId;
+        if (!farmId) return fail('Nenhuma fazenda aberta.');
+        const r = await attempt('mudar o acesso', () => repo.setMemberRole(farmId, userId, role));
+        if (r.ok) await get().loadMembers();
+        return r;
+      },
+
+      async requestPasswordReset(email) {
+        const clean = email.trim();
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)) return fail('Informe o e-mail da conta.');
+        return attempt('mandar o link', () => auth.requestPasswordReset(clean));
+      },
+
+      async setNewPassword(password) {
+        if (password.length < 8) return fail('A senha precisa ter pelo menos 8 caracteres.');
+        const r = await attempt('gravar a senha', () => auth.updatePassword(password));
+        if (r.ok) {
+          set({ passwordRecovery: false });
+          // Tira a marca do endereço, para recarregar a página não pedir senha de novo.
+          if (typeof window !== 'undefined' && window.location.search.includes('senha=')) {
+            window.history.replaceState(null, '', window.location.pathname);
+          }
+        }
+        return r;
       },
 
       async cancelInvite(inviteId) {

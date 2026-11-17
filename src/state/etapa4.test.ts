@@ -107,7 +107,7 @@ describe('fazenda e acesso', () => {
     // E-mail sem conta fica convidado, sem entrar na lista de quem tem acesso.
     expect(await s().addMember('ninguem@exemplo.test')).toEqual({ ok: true, value: 'invited' });
     expect(s().invites!.map((i) => i.email)).toEqual(['ninguem@exemplo.test']);
-    expect(await s().addMember(' Bruno@Exemplo.test ')).toEqual({ ok: true, value: 'member' });
+    expect(await s().addMember(' Bruno@Exemplo.test ', 'member')).toEqual({ ok: true, value: 'member' });
     expect(s().members!.map((m) => [m.email, m.role])).toEqual([
       ['ana@exemplo.test', 'owner'],
       ['bruno@exemplo.test', 'member'],
@@ -116,7 +116,7 @@ describe('fazenda e acesso', () => {
     await be.signInAs('bruno@exemplo.test');
     expect((await be.repo.listFarms()).map((f) => f.name)).toEqual(['Fazenda Exemplo']);
     // Quem não é dono não mexe no acesso.
-    await expect(be.repo.addMember(nf.farm.id, 'ana@exemplo.test')).rejects.toThrow('Só o dono');
+    await expect(be.repo.addMember(nf.farm.id, 'ana@exemplo.test', 'member')).rejects.toThrow('Só o dono');
 
     await be.signInAs('ana@exemplo.test');
     await vi.waitFor(() => expect(s().data?.farm.id).toBe(nf.farm.id));

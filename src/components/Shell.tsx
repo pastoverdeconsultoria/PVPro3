@@ -3,9 +3,10 @@ import { Link, NavLink, Outlet } from 'react-router-dom';
 import { Icon, type IconName } from './Icon';
 import { useOnline } from '../lib/useOnline';
 import { dateTimeText } from '../lib/format';
-import { useApp } from '../state/AppContext';
+import { useApp, useCanEdit } from '../state/AppContext';
 
-const TABS: { to: string; label: string; icon: IconName; end?: boolean }[] = [
+type Tab = { to: string; label: string; icon: IconName; end?: boolean };
+const TABS: Tab[] = [
   { to: '/', label: 'Painel', icon: 'home', end: true },
   { to: '/mapa', label: 'Mapa', icon: 'map' },
   { to: '/modulos', label: 'Módulos', icon: 'grid' },
@@ -13,6 +14,8 @@ const TABS: { to: string; label: string; icon: IconName; end?: boolean }[] = [
   { to: '/clima', label: 'Clima', icon: 'rain' },
   { to: '/analise', label: 'Análise', icon: 'chart' },
 ];
+/** Quem é só leitura + campo troca Módulos (que não edita) pelo Campo. */
+const VIEWER_TABS: Tab[] = TABS.map((t) => (t.to === '/modulos' ? { to: '/campo', label: 'Campo', icon: 'field' } : t));
 
 const tabBase =
   'flex min-h-[54px] min-w-0 flex-1 flex-col items-center justify-center gap-[3px] rounded-[14px] px-0.5 py-1.5 text-[11px] no-underline ' +
@@ -30,7 +33,9 @@ export function Shell() {
   const outboxError = useApp((s) => s.outboxError);
   const flushOutbox = useApp((s) => s.flushOutbox);
   const dismissOutboxError = useApp((s) => s.dismissOutboxError);
-  const newReports = useApp((s) => s.data?.reports.reduce((n, r) => n + (r.status === 'novo' ? 1 : 0), 0) ?? 0);
+  const canEdit = useCanEdit();
+  const newReports = useApp((s) => (s.data?.myRole === 'viewer' ? 0 : s.data?.reports.reduce((n, r) => n + (r.status === 'novo' ? 1 : 0), 0) ?? 0));
+  const tabs = canEdit ? TABS : VIEWER_TABS;
 
   // Confere se a equipe mandou relato novo: ao abrir, quando o sinal volta, quando o
   // app volta para a frente e a cada 2 min. Só os relatos, não a fazenda inteira.
@@ -69,7 +74,7 @@ export function Shell() {
               aria-label="Áreas do sistema"
               className="fixed inset-x-2 bottom-2 z-30 flex justify-between gap-0.5 rounded-[20px] border border-line bg-card p-1.5 shadow-[0_8px_30px_rgba(0,0,0,0.6)] desk:static desk:gap-1 desk:rounded-full desk:p-1 desk:shadow-none"
             >
-              {TABS.map((t) => (
+              {tabs.map((t) => (
                 <NavLink
                   key={t.to}
                   to={t.to}

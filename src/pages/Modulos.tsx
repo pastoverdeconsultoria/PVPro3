@@ -4,17 +4,25 @@ import { Actions, ErrorText, Field, Sheet, useAction } from '../components/ui';
 import type { Module, ModuleCondition } from '../data/types';
 import { paddockStatusText } from '../lib/farm/paddockStyle';
 import { compositionVersions, CONDITION_LABEL, M_REF, MODULE_COLORS, type ModuleView } from '../lib/farm/modules';
+import { byName, groupOf, namesToClean } from '../lib/farm/names';
 import { nf, parseNum } from '../lib/format';
 import { formatBr, todayLocal } from '../lib/lots/dates';
 import { useApp, useFarmView, type FarmScreenData } from '../state/AppContext';
 
 export function Modulos() {
   const fv = useFarmView();
-  const [editing, setEditing] = useState<ModuleView | 'novo' | null>(null);
+  const [editing, setEditing] = useState<ModuleView | 'novo' | { name: string; ids: string[] } | null>(null);
+  const paddocksRaw = useApp((s) => s.data?.paddocks);
+  const cleanPaddockNames = useApp((s) => s.cleanPaddockNames);
+  const clean = useAction();
   if (!fv) return null;
 
   const { view, modules, moduleOf } = fv;
   const loose = view.paddocks.filter((p) => p.paddock.isGrazing && !moduleOf.has(p.paddock.id));
+  const dirtyNames = namesToClean(paddocksRaw ?? []);
+  const grouped = new Map<string, typeof loose>();
+  for (const p of loose) grouped.set(groupOf(p.paddock), [...(grouped.get(groupOf(p.paddock)) ?? []), p]);
+  const groups = [...grouped.entries()].sort((a, b) => byName(a[0], b[0])).map(([g, list]) => [g, [...list].sort((a, b) => byName(a.paddock.name, b.paddock.name))] as const);
 
   return (
     <div className="flex flex-col gap-4 desk:gap-5">
@@ -72,39 +80,86 @@ export function Modulos() {
         </div>
       )}
 
-      {loose.length ? (
-        <section className="card flex flex-col gap-2" aria-label="Piquetes sem módulo">
-          <h2 className="h2">Piquetes sem módulo ({loose.length})</h2>
-          <p className="m-0 text-sm text-muted">{loose.map((p) => p.paddock.name).join(', ')}</p>
+      {dirtyNames.length ? (
+        <section className="card flex flex-col items-start gap-2.5 border-warn/60" aria-label="Nomes com a área junto">
+          <h2 className="h2">Os nomes vieram com a área junto</h2>
+          <p className="k m-0 max-w-[62ch]">
+            {dirtyNames.length} {dirtyNames.length === 1 ? 'piquete tem' : 'piquetes têm'} a área escrita no nome, como “{dirtyNames[0].from}”. A área de verdade já é calculada do mapa. Limpando, esse fica só “{dirtyNames[0].to}”.
+          </p>
+          <ErrorText>{clean.error}</ErrorText>
+          <button type="button" className="btn btn-pri" disabled={clean.busy} onClick={() => void clean.run(() => cleanPaddockNames())}>
+            {clean.busy ? 'Limpando…' : `Limpar os ${dirtyNames.length} nomes`}
+          </button>
         </section>
       ) : null}
 
-      {editing ? <ModuleSheet fv={fv} current={editing === 'novo' ? null : editing} onClose={() => setEditing(null)} /> : null}
+      {loose.length ? (
+        <section className="card flex flex-col gap-4" aria-label="Piquetes sem módulo">
+          <div className="flex flex-col gap-1">
+            <h2 className="h2">Piquetes sem módulo ({loose.length})</h2>
+            <p className="k m-0">
+              {nf(loose.reduce((s, p) => s + p.paddock.areaHa, 0), 1)} ha fora de módulo. Agrupados pela pasta do mapa ou pela letra do nome.
+            </p>
+          </div>
+          {groups.map(([group, list]) => (
+            <div key={group} className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="m-0 font-display text-[16px] font-semibold">
+                  {group} <span className="k font-sans text-xs font-normal">· {list.length} {list.length === 1 ? 'piquete' : 'piquetes'} · {nf(list.reduce((s, p) => s + p.paddock.areaHa, 0), 1)} ha</span>
+                </h3>
+                <button type="button" className="btn px-3.5 text-[13px]" aria-label={`Criar módulo com os ${list.length} piquetes de ${group}`} onClick={() => setEditing({ name: `Módulo ${group}`, ids: list.map((p) => p.paddock.id) })}>
+                  Criar módulo com estes
+                </button>
+              </div>
+              <ul className="m-0 grid list-none grid-cols-3 gap-1.5 p-0 min-[520px]:grid-cols-4 desk:grid-cols-6">
+                {list.map((p) => (
+                  <li key={p.paddock.id} className="flex min-w-0 flex-col rounded-[10px] bg-bg px-2.5 py-1.5">
+                    <span className="truncate text-sm font-semibold">{p.paddock.name}</span>
+                    <span className="k text-xs">{nf(p.paddock.areaHa, 1)} ha</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </section>
+      ) : null}
+
+      {editing ? (
+        <ModuleSheet
+          fv={fv}
+          current={editing !== 'novo' && 'module' in editing ? editing : null}
+          preset={editing !== 'novo' && !('module' in editing) ? editing : null}
+          onClose={() => setEditing(null)}
+        />
+      ) : null}
     </div>
   );
 }
 
-function ModuleSheet({ fv, current, onClose }: { fv: FarmScreenData; current: ModuleView | null; onClose: () => void }) {
+function ModuleSheet({ fv, current, preset, onClose }: { fv: FarmScreenData; current: ModuleView | null; /** Módulo novo já com nome e piquetes sugeridos. */ preset?: { name: string; ids: string[] } | null; onClose: () => void }) {
   const farmId = useApp((s) => s.data?.farm.id ?? '');
   const compositions = useApp((s) => s.data?.compositions);
   const saveModule = useApp((s) => s.saveModule);
   const deleteModule = useApp((s) => s.deleteModule);
   const { view, modules, moduleOf } = fv;
 
-  const [name, setName] = useState(current?.module.name ?? `Módulo ${String.fromCharCode(65 + (modules.length % 26))}`);
+  const [name, setName] = useState(current?.module.name ?? preset?.name ?? `Módulo ${String.fromCharCode(65 + (modules.length % 26))}`);
   const [color, setColor] = useState(current?.module.color ?? MODULE_COLORS[modules.length % MODULE_COLORS.length]);
   const [days, setDays] = useState(String(current?.module.occupationDays ?? 5));
   const [condition, setCondition] = useState<ModuleCondition>(current?.module.condition ?? 'extensiva');
   const [mRef, setMRef] = useState(String(current?.module.mRef ?? M_REF.extensiva));
   const [lot, setLot] = useState(current?.module.plannedLotId ?? '');
   const original = current?.paddocks.map((p) => p.paddock.id) ?? [];
-  const [ids, setIds] = useState<string[]>(original);
+  const [ids, setIds] = useState<string[]>(preset?.ids ?? original);
   const [validFrom, setValidFrom] = useState(todayLocal());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const { busy, error, run } = useAction();
 
   const changed = ids.length !== original.length || ids.some((id, i) => id !== original[i]);
   const available = view.paddocks.filter((p) => p.paddock.isGrazing && !ids.includes(p.paddock.id) && (!moduleOf.has(p.paddock.id) || moduleOf.get(p.paddock.id)!.id === current?.module.id));
+  const byGroup = new Map<string, typeof available>();
+  for (const p of available) byGroup.set(groupOf(p.paddock), [...(byGroup.get(groupOf(p.paddock)) ?? []), p]);
+  const availableGroups = [...byGroup.entries()].sort((a, b) => byName(a[0], b[0]));
   const area = ids.reduce((s, id) => s + (view.paddockById.get(id)?.paddock.areaHa ?? 0), 0);
   const versions = current && compositions ? compositionVersions(compositions, current.module.id) : [];
 
@@ -216,6 +271,16 @@ function ModuleSheet({ fv, current, onClose }: { fv: FarmScreenData; current: Mo
         ) : (
           <p className="k m-0">Nenhum piquete escolhido.</p>
         )}
+        {availableGroups.length > 1 || (availableGroups[0]?.[1].length ?? 0) > 3 ? (
+          <div className="mt-1 flex flex-wrap gap-2" role="group" aria-label="Adicionar um grupo inteiro">
+            {availableGroups.map(([group, list]) => (
+              <button key={group} type="button" className="btn px-3.5 text-[13px]" onClick={() => setIds((cur) => [...cur, ...list.map((p) => p.paddock.id).filter((id) => !cur.includes(id))])}>
+                <Icon name="plus" size={14} />
+                Todos de {group} ({list.length})
+              </button>
+            ))}
+          </div>
+        ) : null}
         {available.length ? (
           <div className="mt-1 flex flex-wrap gap-2" role="group" aria-label="Piquetes disponíveis">
             {available.map((p) => (

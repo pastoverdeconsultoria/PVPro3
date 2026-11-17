@@ -18,6 +18,7 @@ import {
 } from '../data/types';
 import { climateCache, type ClimateApi, type ClimateSeries } from '../lib/climate/openMeteo';
 import { checkComposition } from '../lib/farm/modules';
+import { namesToClean } from '../lib/farm/names';
 import { checkChange, planMove, planRemoval, planRestore, type Result } from '../lib/lots/changes';
 import { addDays, formatBr, isIsoDate, todayLocal, type IsoDate } from '../lib/lots/dates';
 import { deriveLot, orderEvents, stateAt } from '../lib/lots/deriveLot';
@@ -77,6 +78,8 @@ export interface AppState {
 
   createFarm(input: NewFarm): Promise<Result<void>>;
   updatePaddock(paddockId: string, patch: PaddockPatch): Promise<Result<void>>;
+  /** Tira a área grudada no nome dos piquetes ("A1 — 15.7 ha" vira "A1"). Devolve quantos mudaram. */
+  cleanPaddockNames(): Promise<Result<number>>;
   saveModule(module: Module, composition?: { validFrom: IsoDate; paddockIds: string[] }): Promise<Result<void>>;
   deleteModule(moduleId: string): Promise<Result<void>>;
   createLot(input: NewLotInput): Promise<Result<void>>;
@@ -438,6 +441,22 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
           patchData((d) => ({ ...d, paddocks: d.paddocks.map((p) => (p.id === paddockId ? { ...p, ...clean } : p)) }));
         }
         return r;
+      },
+
+      async cleanPaddockNames() {
+        const data = get().data;
+        if (!data) return fail('Nenhuma fazenda aberta.');
+        let done = 0;
+        for (const change of namesToClean(data.paddocks)) {
+          try {
+            await repo.updatePaddock(change.id, { name: change.to });
+          } catch (e) {
+            return fail(`${done} nomes foram limpos antes de parar. ${message(e, 'Não deu para alterar o piquete.')}`);
+          }
+          patchData((d) => ({ ...d, paddocks: d.paddocks.map((p) => (p.id === change.id ? { ...p, name: change.to } : p)) }));
+          done += 1;
+        }
+        return { ok: true, value: done };
       },
 
       async saveModule(module, composition) {

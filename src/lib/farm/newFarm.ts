@@ -7,6 +7,7 @@ import {
   type KmlImport,
 } from '../kml/parseKml';
 import type { Result } from '../lots/changes';
+import { cleanPaddockName } from './names';
 
 /** Capins oferecidos na abertura. O Tb do modelo de projeção depende do capim (decumbens e humidícola: 15,5 °C). */
 export const SPECIES = ['Marandu', 'Mombaça', 'Tanzânia', 'Decumbens', 'Humidícola', 'Piatã', 'Tamani', 'Zuri', 'Outro'] as const;
@@ -20,7 +21,7 @@ export interface PaddockDraft {
 }
 
 export function draftsFromImport(imp: KmlImport): PaddockDraft[] {
-  return imp.paddocks.map((p) => ({ source: p, name: p.name, grazing: p.grazing, species: null }));
+  return imp.paddocks.map((p) => ({ source: p, name: cleanPaddockName(p.name), grazing: p.grazing, species: null }));
 }
 
 export function draftTotals(drafts: readonly PaddockDraft[]) {

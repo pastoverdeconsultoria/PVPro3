@@ -84,6 +84,7 @@ Princípio central, herdado do que o simulador acertou e do que o PV Pro errou v
 - **Chuva real** registrada (pluviômetro ou vaqueiro) tem prioridade sobre a estimada do dia. Gráfico com os dois, marcando qual é qual.
 - No simulador o clima é **sintético e determinístico** (`rnd` com seed, normais de Itapetinga). Substituir pela API real.
 - ETo por Hargreaves-Samani (precisa de latitude e Tmax/Tmin). Balanço hídrico diário simples com CAD de 75 mm e Kc mensal (0,6 de mai a jul; 1,2 em nov e de dez a fev; 0,9 nos demais; hemisfério sul).
+- **Divergência achada em 17 nov 2026, não decidida pelo Lucas:** os meses do Kc acima não batem com o código do simulador que ele aprovou. O código usa mês contado a partir de zero (`m>=5&&m<=7`, `m===11||m<=1`), o que dá **0,6 de junho a agosto e 1,2 de dezembro a fevereiro**. O app segue o código do simulador (`kcOf` em `src/lib/climate/water.ts`), que é o que rodou e faz sentido para a seca da Bahia. Se o Lucas quiser maio a julho, é trocar três números.
 
 ## Projeção de capacidade de suporte
 
@@ -148,7 +149,7 @@ Escuro com verde-limão. Variáveis do simulador: fundo `#0B120E`, card `#121C16
 
 1. ~~Regra do suplemento (28% × 40% a 1% do PV).~~ Escolhido o limiar de 0,3% por delegação; o Lucas pode rever.
 2. Consumo de 2,5% do PV fixo para todas as categorias. Aberto.
-3. Cenários de chuva da projeção são simulados. Trocar por histórico real.
+3. ~~Cenários de chuva da projeção são simulados.~~ Feito: saem do histórico real do centroide (ver Estado da etapa 4).
 4. Nada foi testado com fazenda real. Falta um cliente com 60 a 90 dias de movimentação e o KML dele.
 5. A versão mobile da projeção foi gerada, mas não foi inspecionada visualmente.
 6. Importação de histórico por planilha foi discutida e **descartada por ora**, porque os clientes não têm histórico. O caderno do vaqueiro é o caminho para o dado nascer.
@@ -239,6 +240,21 @@ O cálculo de lotação está escrito e testado, em TypeScript puro (`src/lib/ca
 - Decidido na implementação e pode ser revisto: enquanto a fazenda tem menos de um ano de registro, a "lotação anual" é a lotação do período registrado, a partir da primeira entrada de gado (dividir 30 dias por 365 daria um número falso), e a tela avisa; a lotação por módulo na Análise usa a composição de hoje, não a de cada data; o ranking usa a lotação de pasto quando houve suplemento.
 - **Não portado do simulador:** a projeção de capacidade de suporte, a conta inversa de N e o M calibrado. Dependem do clima pelo centroide (etapa 4). O M calibrado segue com a ressalva dos achados da revisão: mede o manejo, não a capacidade do pasto.
 - Os números da ocorrida não foram comparados com dados de fazenda real, só com contas feitas à mão nos testes.
+
+### Estado da etapa 4 e complementos (17 nov 2026)
+
+Em 16 nov 2026 o Lucas disse "Continue. Faça tudo que tem pra fazer". Foi feito e testado (ver `README.md`):
+
+- **Clima pelo centroide** (Open-Meteo, direto do navegador, sem chave). A coordenada vai arredondada para duas casas (~1 km). Dez anos de ERA5 mais 92 dias recentes e 7 de previsão, guardados no aparelho por 6 horas.
+- **Projeção**, portada do simulador com as mesmas fórmulas e a mesma memória do crescimento (peso 0,4 quando não calibrado). M calibrado existe e só aparece com 6 meses de lotação registrada; a tela deixa alternar para o M de referência e explica que o calibrado mede o manejo.
+- **Cenários de chuva pelo histórico real**, no lugar dos multiplicadores de 75% e 125%: para cada mês do ano, o ano do quantil 20% (seco), a mediana (normal) e o quantil 80% (chuvoso) dos últimos dez anos; o futuro repete os dias reais desse ano. Decisão do Claude, pode ser revista (os quantis e o número de anos são parâmetros).
+- **Dose de N**, registro de adubação por piquete e aviso no Painel acima de 5% da capacidade do mês.
+- **Fila de trocas**, **transferência entre lotes**, **renomear fazenda**, **dar e tirar acesso por e-mail** (só o dono; a pessoa precisa já ter conta) e **consultor registrando sem sinal** (fila no aparelho para mudança, registros do lote, lote novo, transferência e chuva; ações de escritório continuam exigindo sinal).
+- A migração `supabase/migrations/20261117120000_adubacao_membros.sql` precisa ser rodada pelo Lucas. `supabase/pendentes.sql` junta as migrações 2 e 3. Sem elas o app avisa nas telas e segue funcionando.
+
+Não conferido: nada disso rodou contra o Supabase real nem em celular de verdade. O clima foi conferido contra o Open-Meteo só no formato da resposta, com as coordenadas da fazenda inventada; a projeção nunca foi comparada com fazenda real. Com menos de três anos de histórico disponível num ponto, não há cenário e os meses à frente ficam sem projeção (a tela avisa).
+
+Ainda não existe: reimportar KML ou redesenhar piquete, editar registro, satélite e zoom no mapa, excluir fazenda.
 
 O KML real usado para testar a importação fica fora do repositório, por decisão do Lucas. Nenhum nome de fazenda real entra no repositório, que é público.
 

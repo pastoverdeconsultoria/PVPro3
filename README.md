@@ -6,7 +6,7 @@ Leia primeiro o `CLAUDE.md`: definições de lotação, regras de trabalho, deci
 
 ## Colocar para funcionar
 
-1. **Banco (uma vez cada arquivo, na ordem):** no Supabase, abra **SQL Editor**, cole o conteúdo inteiro de `supabase/migrations/20261115120000_base.sql` e clique em **Run**. Depois faça o mesmo com `supabase/migrations/20261116120000_caderno.sql`. Sem o segundo, o app abre normalmente, só sem caderno e sem chuva, e avisa na tela.
+1. **Banco (uma vez cada arquivo, na ordem):** no Supabase, abra **SQL Editor**, cole o conteúdo inteiro de `supabase/migrations/20261115120000_base.sql` e clique em **Run**. Depois faça o mesmo com `supabase/migrations/20261116120000_caderno.sql` e com `supabase/migrations/20261117120000_adubacao_membros.sql`. Sem o segundo, o app abre sem caderno e sem chuva; sem o terceiro, sem adubação e sem dar acesso a outras contas. Em todos os casos a tela avisa o que falta. O arquivo `supabase/pendentes.sql` junta o segundo e o terceiro, para rodar de uma vez.
 2. **Chaves:** em **Project Settings → API**, copie o **Project URL** e a chave **anon / publishable**. Nunca use a chave `service_role`.
 3. **No computador:** copie `.env.example` para `.env.local` e preencha as duas variáveis.
 4. **Na Vercel:** em **Settings → Environment Variables**, crie `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` com os mesmos valores e publique de novo (Deployments → Redeploy).
@@ -35,6 +35,8 @@ O service worker só existe no build. Para testar instalação e uso sem sinal, 
 - `src/state/`: estado do app (conta, fazenda aberta, gravações). Toda gravação é conferida antes de ir ao servidor.
 - `src/lib/lots/`: núcleo do lote, em TypeScript puro. `deriveLot` recalcula cabeças, peso, estadias e onde o lote está a partir do histórico; `planMove` monta saída e entrada de uma mudança; `gmd.ts` é a única conta de GMD do app.
 - `src/lib/calc/`: o cálculo de lotação. `supplement.ts` é a regra do suplemento (um arquivo só, para trocar de regra); `occupancy.ts` corta as estadias em trechos, soma UA-dia e monta os períodos de pastejo do piquete; `analysis.ts` dá a lotação no período, por piquete e por mês.
+- `src/lib/climate/`: clima pelo centroide. `openMeteo.ts` busca o histórico ERA5 e a previsão e guarda no aparelho; `water.ts` calcula a evapotranspiração (Hargreaves-Samani), o balanço hídrico e os cenários de chuva tirados do histórico real.
+- `src/lib/calc/projection.ts`: projeção de capacidade de suporte, M calibrado e conta inversa de N, portados do simulador.
 - `src/lib/farm/`: situação de hoje da fazenda (ocupação, descanso, lotação instantânea e global), módulos e abertura de fazenda.
 - `src/lib/kml/` e `src/lib/geo.ts`: leitor de KML e KMZ, área em hectares pelo elipsoide WGS84 e centroide.
 - `src/lib/notebook/queue.ts`: fila do caderno no aparelho do vaqueiro. Guarda o relato antes de tentar enviar, envia na ordem e não duplica.
@@ -46,6 +48,7 @@ O service worker só existe no build. Para testar instalação e uso sem sinal, 
 ## Testes
 
 - `src/data/db.test.ts` e `src/data/caderno.db.test.ts` rodam as migrações num Postgres de verdade dentro do teste (PGlite), imitando os papéis e as permissões padrão do Supabase, e provam as regras de acesso, inclusive que o anônimo só chama as duas funções do link.
+- `src/lib/climate/climate.test.ts` confere evapotranspiração, cenários, balanço hídrico, projeção e dose de N com um clima inventado e com clima fabricado à mão. `src/state/outbox.test.ts` cobre o registro sem sinal do consultor.
 - `src/Caderno.test.tsx` cobre o caderno de ponta a ponta: vaqueiro com e sem sinal, consultor conferindo e lançando, chuva.
 - `src/App.test.tsx` usa o app inteiro com o banco em memória: entrar, abrir fazenda por KML, mover lote, pesar, apagar e desfazer, montar módulo.
 - A ligação com o Supabase de verdade (`supabaseRepo.ts`) não tem teste automático: só é exercitada com um projeto real.
@@ -58,4 +61,8 @@ Etapa 2 escrita: caderno da equipe. O consultor manda o link da fazenda; o vaque
 
 Etapa 3 escrita, menos a projeção: lotação ocorrida e global do ciclo no cartão do piquete, UA de pasto com o desconto do suplemento, e a tela de Análise com a lotação no período, por mês, por módulo e o ranking dos piquetes.
 
-Fora destas etapas: projeção de capacidade de suporte e dose de N, chuva e temperatura estimadas pelo centroide (etapa 4). No app do consultor, sem sinal ele abre e mostra a última cópia, mas não grava: a fila offline existe só no caderno do vaqueiro.
+Etapa 4 escrita: clima estimado pelo centroide (previsão e chuva mês a mês ao lado da registrada), projeção de capacidade de suporte com cenários de chuva do histórico real, dose de N a partir de uma meta de lotação, registro de adubação e aviso no Painel quando a lotação passa da capacidade do mês. A projeção é hipótese não validada, e a tela diz isso.
+
+Também: fila de trocas no Painel, transferência de animais entre lotes, renomear a fazenda, dar e tirar acesso de outras contas pelo e-mail, e o consultor registrar sem sinal (mudança de gado, registros do lote, lote novo e chuva ficam guardados no aparelho e são enviados depois).
+
+Ainda não existe: reimportar o KML ou redesenhar piquete, editar um registro (hoje é apagar e lançar de novo), imagem de satélite e zoom no mapa. No app do consultor, sem sinal ele abre e mostra a última cópia, mas não grava: a fila offline existe só no caderno do vaqueiro.

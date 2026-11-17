@@ -3,6 +3,7 @@ import type { LotEvent } from '../lib/lots/types';
 import {
   COLS,
   eventToPayload,
+  fertilizationToRow,
   jsonToNotebookContext,
   lotToPayload,
   moduleToArgs,
@@ -14,7 +15,9 @@ import {
   rowToComposition,
   rowToEvent,
   rowToFarm,
+  rowToFertilization,
   rowToLot,
+  rowToMember,
   rowToModule,
   rowToPaddock,
   rowToRain,
@@ -131,13 +134,14 @@ export function createSupabaseRepo(client: SupabaseClient): Repo {
         // As tabelas do caderno chegam numa migração posterior. Enquanto ela não for
         // rodada, a fazenda abre normalmente, só sem caderno e sem chuva.
         let notebookReady = true;
-        const optional = (rows: Promise<Record<string, unknown>[]>) =>
+        let fertilizationReady = true;
+        const optional = (rows: Promise<Record<string, unknown>[]>, missing: () => void = () => (notebookReady = false)) =>
           rows.catch((e) => {
             if (!(e instanceof RepoError) || !e.schemaMissing) throw e;
-            notebookReady = false;
+            missing();
             return [] as Record<string, unknown>[];
           });
-        const [farm, paddocks, water, lots, modules, compositions, events, reports, rain] = await Promise.all([
+        const [farm, paddocks, water, lots, modules, compositions, events, reports, rain, fertilizations] = await Promise.all([
           client.from('farms').select(COLS.farms).eq('id', farmId).maybeSingle(),
           fetchAll(() => live('paddocks').order('sort').order('id'), doing),
           fetchAll(() => live('water_points').order('id'), doing),
@@ -152,6 +156,7 @@ export function createSupabaseRepo(client: SupabaseClient): Repo {
           ),
           optional(fetchAll(() => live('field_reports').order('created_at').order('id'), doing)),
           optional(fetchAll(() => live('rain_records').order('rain_date').order('id'), doing)),
+          optional(fetchAll(() => live('fertilizations').order('applied_on').order('id'), doing), () => (fertilizationReady = false)),
         ]);
         check(farm.error, doing);
         if (!farm.data) throw new RepoError('Fazenda não encontrada ou sua conta não tem acesso a ela.');
@@ -166,6 +171,8 @@ export function createSupabaseRepo(client: SupabaseClient): Repo {
           reports: reports.map(rowToReport),
           rain: rain.map(rowToRain),
           notebookReady,
+          fertilizations: fertilizations.map(rowToFertilization),
+          fertilizationReady,
         };
       }),
 
@@ -280,6 +287,43 @@ export function createSupabaseRepo(client: SupabaseClient): Repo {
         const { data, error } = await client.rpc('rotate_share_token', { p_farm: farmId });
         check(error, 'trocar o link');
         return String(data);
+      }),
+
+    recordFertilization: (farmId, fertilization) =>
+      run('registrar a adubação', async () => {
+        const { error } = await client.from('fertilizations').insert(fertilizationToRow(farmId, fertilization));
+        check(error, 'registrar a adubação');
+      }),
+
+    setFertilizationDeleted: (fertilizationId, deletedAt) =>
+      run('alterar a adubação', async () => {
+        const { error } = await client.from('fertilizations').update({ deleted_at: deletedAt }).eq('id', fertilizationId);
+        check(error, 'alterar a adubação');
+      }),
+
+    renameFarm: (farmId, patch) =>
+      run('alterar a fazenda', async () => {
+        const { error } = await client.from('farms').update({ name: patch.name, municipality: patch.municipality }).eq('id', farmId);
+        check(error, 'alterar a fazenda');
+      }),
+
+    listMembers: (farmId) =>
+      run('ler quem tem acesso', async () => {
+        const { data, error } = await client.rpc('list_farm_members', { p_farm: farmId });
+        check(error, 'ler quem tem acesso');
+        return ((data as Record<string, unknown>[] | null) ?? []).map(rowToMember);
+      }),
+
+    addMember: (farmId, email) =>
+      run('dar acesso', async () => {
+        const { error } = await client.rpc('add_farm_member', { p_farm: farmId, p_email: email });
+        check(error, 'dar acesso');
+      }),
+
+    removeMember: (farmId, userId) =>
+      run('tirar o acesso', async () => {
+        const { error } = await client.rpc('remove_farm_member', { p_farm: farmId, p_user: userId });
+        check(error, 'tirar o acesso');
       }),
   };
 }

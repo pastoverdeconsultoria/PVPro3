@@ -1,5 +1,5 @@
 import type { LotEvent } from '../lib/lots/types';
-import type { CompositionRow, Farm, FieldReport, Lot, Module, NewFarm, NotebookContext, NotebookReport, Paddock, RainRecord, WaterPoint } from './types';
+import type { CompositionRow, Farm, FarmMember, Fertilization, FieldReport, Lot, Module, NewFarm, NotebookContext, NotebookReport, Paddock, RainRecord, WaterPoint } from './types';
 
 // Tradução entre as linhas do banco (snake_case) e os tipos do app. Fica num
 // arquivo só, sem dependência do Supabase, para o teste do banco conferir que as
@@ -17,6 +17,7 @@ export const COLS = {
     'id,lot_id,event_date,seq,type,heads,weight_kg,category,pct_pv,paddock_id,reason,heads_weighed,link,note,deleted_at',
   field_reports: 'id,kind,report_date,mm,lot_id,to_paddock_id,reporter,note,status,created_at',
   rain_records: 'id,rain_date,mm,note,report_id',
+  fertilizations: 'id,paddock_id,applied_on,n_kg_ha,note',
 } as const;
 
 // biome-ignore lint: linhas do banco chegam sem tipo
@@ -135,6 +136,19 @@ export function rowToReport(r: Row): FieldReport {
 
 export function rowToRain(r: Row): RainRecord {
   return { id: r.id, date: isoDate(r.rain_date), mm: num(r.mm), note: r.note ?? null, reportId: r.report_id ?? null };
+}
+
+export function rowToFertilization(r: Row): Fertilization {
+  return { id: r.id, paddockId: r.paddock_id, date: isoDate(r.applied_on), nKgHa: num(r.n_kg_ha), note: r.note ?? null };
+}
+
+/** Adubação no formato da tabela `fertilizations`. */
+export function fertilizationToRow(farmId: string, f: Fertilization): Row {
+  return { id: f.id, farm_id: farmId, paddock_id: f.paddockId, applied_on: f.date, n_kg_ha: f.nKgHa, note: f.note };
+}
+
+export function rowToMember(r: Row): FarmMember {
+  return { userId: r.user_id, email: r.email ?? '', role: r.role };
 }
 
 /** Colunas de relato que o consultor pode alterar antes de lançar. */

@@ -12,7 +12,7 @@ let seq = 0;
 
 function farm(): FarmData & { p: (name: string) => string; area: (name: string) => number; lot: (name: string, date: string, heads: number, kg: number) => Lot } {
   const nf = exampleNewFarm();
-  const f: FarmData = { farm: nf.farm, paddocks: nf.paddocks, waterPoints: nf.waterPoints, lots: [], modules: [], compositions: [], events: [], reports: [], rain: [] };
+  const f: FarmData = { farm: nf.farm, paddocks: nf.paddocks, waterPoints: nf.waterPoints, lots: [], modules: [], compositions: [], events: [], reports: [], rain: [], fertilizations: [] };
   return Object.assign(f, {
     p: (name: string) => nf.paddocks.find((x) => x.name === name)!.id,
     area: (name: string) => nf.paddocks.find((x) => x.name === name)!.areaHa,

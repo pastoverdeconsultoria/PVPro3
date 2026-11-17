@@ -12,7 +12,7 @@ const SUPABASE_STUB = `
   create role service_role nologin;
 
   create schema auth;
-  create table auth.users (id uuid primary key);
+  create table auth.users (id uuid primary key, email text);
   create function auth.uid() returns uuid language sql stable as $$
     select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
   $$;
@@ -43,8 +43,8 @@ export async function freshDb(): Promise<PGlite> {
   return db;
 }
 
-export async function addUser(db: PGlite, id: string): Promise<void> {
-  await db.query('insert into auth.users (id) values ($1)', [id]);
+export async function addUser(db: PGlite, id: string, email: string | null = null): Promise<void> {
+  await db.query('insert into auth.users (id, email) values ($1, $2)', [id, email]);
 }
 
 /** Roda `fn` como um usuário logado (`userId`) ou como anônimo (`null`). */

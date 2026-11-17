@@ -6,6 +6,7 @@ import {
   type Auth,
   type CompositionRow,
   type Farm,
+  type Fertilization,
   type FieldReport,
   type Lot,
   type Module,
@@ -34,6 +35,8 @@ export function createMemoryBackend() {
   const events: LotEvent[] = [];
   const reports: (FieldReport & { farmId: string })[] = [];
   const rain: (RainRecord & { farmId: string; deletedAt: string | null })[] = [];
+  const fertilizations: (Fertilization & { farmId: string; deletedAt: string | null })[] = [];
+  const owners = new Map<string, string>();
   const newToken = () => (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '');
   const farmByToken = (token: string) => farms.find((f) => token.length >= 32 && f.shareToken === token);
   const accounts = new Map<string, { id: string; password: string }>();
@@ -96,6 +99,7 @@ export function createMemoryBackend() {
         events: events.filter((e) => farmLots.some((l) => l.id === e.lotId)),
         reports: reports.filter((r) => r.farmId === farmId).map(({ farmId: _f, ...r }) => r),
         rain: rain.filter((r) => r.farmId === farmId && !r.deletedAt).map(({ farmId: _f, deletedAt: _d, ...r }) => r),
+        fertilizations: fertilizations.filter((x) => x.farmId === farmId && !x.deletedAt).map(({ farmId: _f, deletedAt: _d, ...x }) => x),
       });
     },
 
@@ -109,6 +113,7 @@ export function createMemoryBackend() {
       }
       farms.push({ ...input.farm, shareToken: newToken() });
       members.set(input.farm.id, new Set([id]));
+      owners.set(input.farm.id, id);
       paddocks.push(...structuredClone(input.paddocks));
       waterPoints.push(...structuredClone(input.waterPoints));
     },
@@ -249,6 +254,49 @@ export function createMemoryBackend() {
       const f = farms.find((x) => x.id === farmId)!;
       f.shareToken = newToken();
       return f.shareToken;
+    },
+
+    async recordFertilization(farmId, fert) {
+      online('recordFertilization');
+      member(farmId);
+      if (!paddocks.some((p) => p.id === fert.paddockId && p.farmId === farmId)) throw new RepoError('Piquete de outra fazenda.');
+      if (!fertilizations.some((x) => x.id === fert.id)) fertilizations.push({ ...fert, farmId, deletedAt: null });
+    },
+
+    async setFertilizationDeleted(fertilizationId, deletedAt) {
+      online('setFertilizationDeleted');
+      const x = fertilizations.find((y) => y.id === fertilizationId);
+      if (!x) return;
+      member(x.farmId);
+      x.deletedAt = deletedAt;
+    },
+
+    async renameFarm(farmId, patch) {
+      online('renameFarm');
+      member(farmId);
+      Object.assign(farms.find((f) => f.id === farmId)!, patch);
+    },
+
+    async listMembers(farmId) {
+      online('listMembers');
+      member(farmId);
+      const emailOf = (id: string) => [...accounts.entries()].find(([, a]) => a.id === id)?.[0] ?? '';
+      return [...members.get(farmId)!].map((id) => ({ userId: id, email: emailOf(id), role: owners.get(farmId) === id ? ('owner' as const) : ('member' as const) }));
+    },
+
+    async addMember(farmId, email) {
+      online('addMember');
+      if (owners.get(farmId) !== uid()) throw new RepoError('Só o dono da fazenda dá acesso a outra conta.');
+      const acc = accounts.get(email.trim().toLowerCase());
+      if (!acc) throw new RepoError('Não existe conta com esse e-mail. A pessoa precisa criar a conta no app primeiro.');
+      members.get(farmId)!.add(acc.id);
+    },
+
+    async removeMember(farmId, userId) {
+      online('removeMember');
+      if (owners.get(farmId) !== uid()) throw new RepoError('Só o dono da fazenda tira o acesso de outra conta.');
+      if (userId === uid()) throw new RepoError('Você não pode tirar o próprio acesso.');
+      members.get(farmId)!.delete(userId);
     },
   };
 

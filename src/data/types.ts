@@ -92,6 +92,23 @@ export interface RainRecord {
   reportId: string | null;
 }
 
+/** Adubação nitrogenada aplicada num piquete. Entra na projeção, com efeito distribuído em 60 dias. */
+export interface Fertilization {
+  id: string;
+  paddockId: string;
+  date: IsoDate;
+  /** kg de N por hectare (não de ureia). */
+  nKgHa: number;
+  note: string | null;
+}
+
+/** Conta com acesso à fazenda. */
+export interface FarmMember {
+  userId: string;
+  email: string;
+  role: 'owner' | 'member';
+}
+
 export type ReportPatch = Partial<Pick<FieldReport, 'date' | 'mm' | 'lotId' | 'toPaddockId' | 'note'>>;
 
 /** O que o link público mostra: o mínimo para quem relata reconhecer o lote e tocar no pasto certo. */
@@ -137,6 +154,9 @@ export interface FarmData {
   rain: RainRecord[];
   /** Falso quando o banco ainda não tem as tabelas do caderno (falta rodar o SQL da etapa 2). */
   notebookReady?: boolean;
+  fertilizations: Fertilization[];
+  /** Falso quando o banco ainda não tem adubação e membros (falta rodar o SQL da etapa 4). */
+  fertilizationReady?: boolean;
 }
 
 export interface NewFarm {
@@ -198,6 +218,15 @@ export interface Repo {
   setRainDeleted(rainId: string, deletedAt: string | null): Promise<void>;
   /** Troca o link do caderno; o antigo para de funcionar. Devolve o token novo. */
   rotateShareToken(farmId: string): Promise<string>;
+
+  recordFertilization(farmId: string, fertilization: Fertilization): Promise<void>;
+  setFertilizationDeleted(fertilizationId: string, deletedAt: string | null): Promise<void>;
+  renameFarm(farmId: string, patch: { name: string; municipality: string | null }): Promise<void>;
+  listMembers(farmId: string): Promise<FarmMember[]>;
+  /** Dá acesso a uma conta que já existe, pelo e-mail. Só o dono. */
+  addMember(farmId: string, email: string): Promise<void>;
+  /** Tira o acesso (de forma suave). Só o dono, e nunca o próprio. */
+  removeMember(farmId: string, userId: string): Promise<void>;
 }
 
 export interface Auth {

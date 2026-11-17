@@ -255,7 +255,7 @@ export function createAppStore({ repo, auth, now = () => new Date() }: StoreDeps
           if (get().farmId !== farmId) return;
           const saved = e instanceof RepoError && e.offline ? cache.loadFarm(user.id, farmId) : null;
           // Cópia gravada por versão antiga do app pode não ter caderno nem chuva.
-          if (saved) set({ data: { ...saved.value, reports: saved.value.reports ?? [], rain: saved.value.rain ?? [] }, loading: false, staleSince: saved.savedAt });
+          if (saved) set({ data: { ...saved.value, reports: saved.value.reports ?? [], rain: saved.value.rain ?? [], fertilizations: saved.value.fertilizations ?? [] }, loading: false, staleSince: saved.savedAt });
           else set({ loading: false, loadError: message(e, 'Não deu para ler a fazenda.') });
         }
       },

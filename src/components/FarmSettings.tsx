@@ -63,11 +63,14 @@ function RenameFarm({ name: current, municipality: currentCity }: { name: string
 
 function Members() {
   const members = useApp((s) => s.members);
+  const invites = useApp((s) => s.invites);
   const me = useApp((s) => s.user?.id);
   const loadMembers = useApp((s) => s.loadMembers);
   const addMember = useApp((s) => s.addMember);
   const removeMember = useApp((s) => s.removeMember);
+  const cancelInvite = useApp((s) => s.cancelInvite);
   const [email, setEmail] = useState('');
+  const [done, setDone] = useState<{ email: string; kind: 'member' | 'invited' } | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
   const load = useAction();
   const add = useAction();
@@ -114,6 +117,30 @@ function Members() {
               ) : null}
             </li>
           ))}
+          {owner
+            ? invites?.map((i) => (
+                <li key={i.id} className="flex items-center justify-between gap-3 border-t border-line py-2">
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate text-sm">{i.email}</span>
+                    <span className="text-xs text-warn">convidado · ainda não criou a conta</span>
+                  </span>
+                  {confirm === i.id ? (
+                    <span className="flex shrink-0 gap-1.5">
+                      <button type="button" className="btn btn-danger px-3 text-[13px]" disabled={remove.busy} onClick={() => void remove.run(() => cancelInvite(i.id), () => setConfirm(null))}>
+                        Cancelar convite
+                      </button>
+                      <button type="button" className="btn px-3 text-[13px]" onClick={() => setConfirm(null)}>
+                        Não
+                      </button>
+                    </span>
+                  ) : (
+                    <button type="button" className="btn shrink-0 px-3 text-[13px]" aria-label={`Cancelar o convite de ${i.email}`} onClick={() => setConfirm(i.id)}>
+                      Cancelar
+                    </button>
+                  )}
+                </li>
+              ))
+            : null}
         </ul>
       ) : !load.error ? (
         <p className="k m-0" role="status">
@@ -129,13 +156,34 @@ function Members() {
           noValidate
           onSubmit={(e) => {
             e.preventDefault();
-            void add.run(() => addMember(email), () => setEmail(''));
+            setDone(null);
+            const sent = email.trim();
+            void add.run(
+              () => addMember(sent),
+              (kind) => {
+                setEmail('');
+                setDone({ email: sent, kind });
+              },
+            );
           }}
         >
-          <Field label="Dar acesso a outra conta" hint="A pessoa precisa já ter criado a conta no app, com este e-mail. Ela passa a ver e a gravar tudo desta fazenda.">
+          <Field label="Dar acesso pelo e-mail" hint="A pessoa vê e grava tudo desta fazenda, e só desta. Se ela ainda não tem conta, fica convidada: só e-mail convidado consegue criar conta no app.">
             {(id) => <input id={id} className="in" type="email" inputMode="email" autoCapitalize="none" placeholder="email@exemplo.com" value={email} onChange={(e) => setEmail(e.target.value)} />}
           </Field>
           <ErrorText>{add.error}</ErrorText>
+          {done ? (
+            <p className="note m-0" role="status">
+              {done.kind === 'member' ? (
+                <>
+                  <b>{done.email}</b> já tinha conta e agora tem acesso a esta fazenda.
+                </>
+              ) : (
+                <>
+                  Convite criado. Mande para <b>{done.email}</b> o endereço <b>{window.location.origin}</b> e peça para tocar em <b>Criar conta</b> com esse mesmo e-mail. A fazenda aparece sozinha quando ela entrar.
+                </>
+              )}
+            </p>
+          ) : null}
           <button type="submit" className="btn btn-pri self-start" disabled={add.busy}>
             {add.busy ? 'Aguarde…' : 'Dar acesso'}
           </button>

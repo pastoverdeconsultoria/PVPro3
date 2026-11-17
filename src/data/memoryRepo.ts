@@ -40,6 +40,11 @@ export function createMemoryBackend() {
   const newToken = () => (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '');
   const farmByToken = (token: string) => farms.find((f) => token.length >= 32 && f.shareToken === token);
   const accounts = new Map<string, { id: string; password: string }>();
+  /** Null: todo mundo é administrador (testes antigos). Com lista, só esses e-mails. */
+  let admins: Set<string> | null = null;
+  let inviteOnly = false;
+  const invites: { id: string; farmId: string; email: string; createdAt: string; open: boolean }[] = [];
+  const isAdmin = () => !admins || admins.has(user?.email ?? '');
   const listeners = new Set<(u: User | null) => void>();
 
   let seq = 0;
@@ -107,6 +112,7 @@ export function createMemoryBackend() {
     async createFarm(input) {
       online('createFarm');
       const id = uid();
+      if (!isAdmin()) throw new RepoError('Só o administrador do sistema abre fazenda nova.');
       if (!input.paddocks.length) throw new RepoError('A fazenda precisa de pelo menos um piquete.');
       if (farms.some((f) => f.id === input.farm.id)) {
         if (members.get(input.farm.id)?.has(id)) return;
@@ -288,9 +294,48 @@ export function createMemoryBackend() {
     async addMember(farmId, email) {
       online('addMember');
       if (owners.get(farmId) !== uid()) throw new RepoError('Só o dono da fazenda dá acesso a outra conta.');
-      const acc = accounts.get(email.trim().toLowerCase());
-      if (!acc) throw new RepoError('Não existe conta com esse e-mail. A pessoa precisa criar a conta no app primeiro.');
-      members.get(farmId)!.add(acc.id);
+      const clean = email.trim().toLowerCase();
+      const acc = accounts.get(clean);
+      if (acc) {
+        members.get(farmId)!.add(acc.id);
+        return 'member';
+      }
+      if (!invites.some((i) => i.open && i.farmId === farmId && i.email === clean)) {
+        invites.push({ id: crypto.randomUUID(), farmId, email: clean, createdAt: new Date().toISOString(), open: true });
+      }
+      return 'invited';
+    },
+
+    async listInvites(farmId) {
+      online('listInvites');
+      if (owners.get(farmId) !== uid()) return [];
+      return invites.filter((i) => i.open && i.farmId === farmId).map(({ id, email, createdAt }) => ({ id, email, createdAt }));
+    },
+
+    async cancelInvite(inviteId) {
+      online('cancelInvite');
+      const inv = invites.find((i) => i.id === inviteId);
+      if (!inv || owners.get(inv.farmId) !== uid()) throw new RepoError('Só o dono da fazenda cancela convite.');
+      inv.open = false;
+    },
+
+    async claimInvites() {
+      online('claimInvites');
+      const id = uid();
+      let n = 0;
+      for (const inv of invites) {
+        if (!inv.open || inv.email !== user?.email.toLowerCase()) continue;
+        inv.open = false;
+        members.get(inv.farmId)!.add(id);
+        n++;
+      }
+      return n;
+    },
+
+    async canCreateFarms() {
+      online('canCreateFarms');
+      uid();
+      return isAdmin();
     },
 
     async removeMember(farmId, userId) {
@@ -382,6 +427,9 @@ export function createMemoryBackend() {
       if (offline) throw new RepoError(OFFLINE_MESSAGE, true);
       if (accounts.has(email.toLowerCase())) throw new RepoError('Esse e-mail já tem conta. Use "Entrar".');
       if (password.length < 6) throw new RepoError('A senha precisa ter pelo menos 6 caracteres.');
+      if (inviteOnly && !invites.some((i) => i.open && i.email === email.toLowerCase())) {
+        throw new RepoError('Este e-mail não tem convite. Peça ao consultor para liberar o seu acesso.');
+      }
       const acc = { id: crypto.randomUUID(), password };
       accounts.set(email.toLowerCase(), acc);
       setUser({ id: acc.id, email: email.toLowerCase() });
@@ -404,6 +452,11 @@ export function createMemoryBackend() {
     /** Simula o banco sem a migração do caderno. */
     setNotebookMissing(value: boolean) {
       notebookMissing = value;
+    },
+    /** Liga a regra nova: só esses e-mails abrem fazenda, e cadastro só com convite. */
+    restrictTo(adminEmails: string[]) {
+      admins = new Set(adminEmails);
+      inviteOnly = true;
     },
     /** Entra direto com uma conta nova, sem passar pela tela. */
     async signInAs(email: string) {

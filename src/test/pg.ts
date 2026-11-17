@@ -10,9 +10,10 @@ const SUPABASE_STUB = `
   create role anon nologin;
   create role authenticated nologin;
   create role service_role nologin;
+  create role supabase_auth_admin nologin;
 
   create schema auth;
-  create table auth.users (id uuid primary key, email text);
+  create table auth.users (id uuid primary key, email text, email_confirmed_at timestamptz default now());
   create function auth.uid() returns uuid language sql stable as $$
     select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
   $$;
@@ -43,8 +44,13 @@ export async function freshDb(): Promise<PGlite> {
   return db;
 }
 
-export async function addUser(db: PGlite, id: string, email: string | null = null): Promise<void> {
-  await db.query('insert into auth.users (id, email) values ($1, $2)', [id, email]);
+/**
+ * Cria a conta. Por padrão ela é administradora, porque só administrador abre
+ * fazenda; `admin: false` faz um cliente comum.
+ */
+export async function addUser(db: PGlite, id: string, email: string | null = null, opts: { admin?: boolean; confirmed?: boolean } = {}): Promise<void> {
+  await db.query('insert into auth.users (id, email, email_confirmed_at) values ($1, $2, $3)', [id, email, opts.confirmed === false ? null : new Date().toISOString()]);
+  if (opts.admin !== false) await db.query('insert into public.app_admins (user_id) values ($1)', [id]);
 }
 
 /** Roda `fn` como um usuário logado (`userId`) ou como anônimo (`null`). */

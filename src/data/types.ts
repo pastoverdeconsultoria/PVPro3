@@ -109,6 +109,13 @@ export interface FarmMember {
   role: 'owner' | 'member';
 }
 
+/** Convite ainda não usado: o e-mail ainda não criou conta. */
+export interface FarmInvite {
+  id: string;
+  email: string;
+  createdAt: string;
+}
+
 export type ReportPatch = Partial<Pick<FieldReport, 'date' | 'mm' | 'lotId' | 'toPaddockId' | 'note'>>;
 
 /** O que o link público mostra: o mínimo para quem relata reconhecer o lote e tocar no pasto certo. */
@@ -223,10 +230,20 @@ export interface Repo {
   setFertilizationDeleted(fertilizationId: string, deletedAt: string | null): Promise<void>;
   renameFarm(farmId: string, patch: { name: string; municipality: string | null }): Promise<void>;
   listMembers(farmId: string): Promise<FarmMember[]>;
-  /** Dá acesso a uma conta que já existe, pelo e-mail. Só o dono. */
-  addMember(farmId: string, email: string): Promise<void>;
+  /**
+   * Dá acesso pelo e-mail. Só o dono. Conta que já existe entra na hora
+   * ('member'); e-mail sem conta fica convidado ('invited') e pode se cadastrar.
+   */
+  addMember(farmId: string, email: string): Promise<'member' | 'invited'>;
   /** Tira o acesso (de forma suave). Só o dono, e nunca o próprio. */
   removeMember(farmId: string, userId: string): Promise<void>;
+  /** Convites ainda não usados. Só o dono vê; os outros recebem lista vazia. */
+  listInvites(farmId: string): Promise<FarmInvite[]>;
+  cancelInvite(inviteId: string): Promise<void>;
+  /** Transforma os convites do e-mail da conta em acesso. Devolve quantas fazendas foram liberadas. */
+  claimInvites(): Promise<number>;
+  /** Se a conta pode abrir fazenda nova (administrador do sistema). */
+  canCreateFarms(): Promise<boolean>;
 }
 
 export interface Auth {

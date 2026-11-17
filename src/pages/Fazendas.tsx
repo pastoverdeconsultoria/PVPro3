@@ -10,6 +10,7 @@ export function Fazendas() {
   const loadError = useApp((s) => s.loadError);
   const loading = useApp((s) => s.loading);
   const user = useApp((s) => s.user);
+  const canCreate = useApp((s) => s.canCreateFarms);
   const openFarm = useApp((s) => s.openFarm);
   const loadFarms = useApp((s) => s.loadFarms);
   const signOut = useApp((s) => s.signOut);
@@ -44,7 +45,9 @@ export function Fazendas() {
 
           {!farms.length && !loadError ? (
             <p className="k m-0 max-w-[62ch]">
-              Nenhuma fazenda ainda. A fazenda nasce do arquivo KML ou KMZ com os piquetes desenhados como polígono no Google Earth.
+              {canCreate === false
+                ? 'Sua conta ainda não tem fazenda liberada. Peça ao consultor para dar acesso a este e-mail e depois toque em Atualizar.'
+                : 'Nenhuma fazenda ainda. A fazenda nasce do arquivo KML ou KMZ com os piquetes desenhados como polígono no Google Earth.'}
             </p>
           ) : null}
 
@@ -70,10 +73,16 @@ export function Fazendas() {
             </ul>
           ) : null}
 
-          <Link to="/fazendas/nova" className="btn btn-pri self-start">
-            <Icon name="plus" />
-            Abrir fazenda nova
-          </Link>
+          {canCreate ? (
+            <Link to="/fazendas/nova" className="btn btn-pri self-start">
+              <Icon name="plus" />
+              Abrir fazenda nova
+            </Link>
+          ) : canCreate === false && !farms.length ? (
+            <button type="button" className="btn self-start" disabled={loading} onClick={() => void loadFarms()}>
+              {loading ? 'Atualizando…' : 'Atualizar'}
+            </button>
+          ) : null}
         </section>
       )}
 

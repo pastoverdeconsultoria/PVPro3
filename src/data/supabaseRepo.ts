@@ -76,9 +76,12 @@ function authMessage(message: string): string {
   if (/invalid login credentials/i.test(message)) return 'E-mail ou senha incorretos.';
   if (/email not confirmed/i.test(message)) return 'Confirme o e-mail pelo link que chegou na sua caixa de entrada e entre de novo.';
   if (/already registered|already been registered/i.test(message)) return 'Esse e-mail já tem conta. Use "Entrar".';
-  if (/password should be at least|weak password/i.test(message)) return 'A senha precisa ter pelo menos 6 caracteres.';
+  if (/password should be at least|weak password|password is known to be weak/i.test(message)) {
+    const n = message.match(/at least (\d+)/i)?.[1];
+    return n ? `A senha precisa ter pelo menos ${n} caracteres.` : 'Senha fraca. Use pelo menos 8 caracteres, misturando letras e números.';
+  }
   if (/rate limit|too many/i.test(message)) return 'Muitas tentativas seguidas. Espere um minuto e tente de novo.';
-  if (/signups? not allowed|signup is disabled/i.test(message)) return 'A criação de contas está desligada neste projeto.';
+  if (/signups? not allowed|signup is disabled/i.test(message)) return 'A criação de contas está desligada. Peça ao consultor para liberar o seu acesso.';
   if (/unable to validate email|invalid email|invalid format/i.test(message)) return 'E-mail inválido.';
   return message;
 }
@@ -316,8 +319,53 @@ export function createSupabaseRepo(client: SupabaseClient): Repo {
 
     addMember: (farmId, email) =>
       run('dar acesso', async () => {
-        const { error } = await client.rpc('add_farm_member', { p_farm: farmId, p_email: email });
+        const { data, error } = await client.rpc('add_farm_member', { p_farm: farmId, p_email: email });
         check(error, 'dar acesso');
+        // Antes da migração de convites a função devolvia o id da conta.
+        return data === 'invited' ? 'invited' : 'member';
+      }),
+
+    listInvites: (farmId) =>
+      run('ler os convites', async () => {
+        try {
+          const { data, error } = await client.rpc('list_farm_invites', { p_farm: farmId });
+          check(error, 'ler os convites');
+          return ((data as Record<string, unknown>[] | null) ?? []).map((r) => ({ id: String(r.id), email: String(r.email), createdAt: String(r.created_at) }));
+        } catch (e) {
+          if (toRepoError(e, 'ler os convites').schemaMissing) return [];
+          throw e;
+        }
+      }),
+
+    cancelInvite: (inviteId) =>
+      run('cancelar o convite', async () => {
+        const { error } = await client.rpc('cancel_farm_invite', { p_invite: inviteId });
+        check(error, 'cancelar o convite');
+      }),
+
+    claimInvites: () =>
+      run('liberar os convites', async () => {
+        try {
+          const { data, error } = await client.rpc('claim_farm_invites');
+          check(error, 'liberar os convites');
+          return Number(data ?? 0);
+        } catch (e) {
+          if (toRepoError(e, 'liberar os convites').schemaMissing) return 0;
+          throw e;
+        }
+      }),
+
+    canCreateFarms: () =>
+      run('ler a conta', async () => {
+        try {
+          const { data, error } = await client.rpc('is_app_admin');
+          check(error, 'ler a conta');
+          return data === true;
+        } catch (e) {
+          // Sem a migração de convites, todo mundo ainda abre fazenda.
+          if (toRepoError(e, 'ler a conta').schemaMissing) return true;
+          throw e;
+        }
       }),
 
     removeMember: (farmId, userId) =>

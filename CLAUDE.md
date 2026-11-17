@@ -270,11 +270,21 @@ Conferido e sem achado: nenhuma tabela tem acesso de anônimo nem DELETE; toda f
 Riscos que dependem de configuração do Lucas no Supabase, não de código:
 
 - **Confirmação de e-mail desligada.** Com ela desligada, qualquer pessoa cria conta com o e-mail de outra. Se o dono der acesso a esse e-mail, quem criou a conta falsa entra na fazenda. Religar "Confirm email" antes de usar "Dar acesso" com gente de fora.
-- Criação de conta aberta a qualquer um. Conta sem vínculo não enxerga nada, mas dá para fechar em Authentication depois de criar as contas necessárias.
+- Criação de conta aberta a qualquer um. Resolvido pela regra de acesso abaixo, quando o hook for ligado.
 - Senha mínima de 6 caracteres (padrão do Supabase). Subir o mínimo e ligar a proteção contra senha vazada.
 - Plano gratuito: sem backup e pausa por inatividade.
 
 Limites conhecidos, aceitos por ora: o link do caderno é o segredo (quem tem o link vê nomes de piquetes e lotes, cabeças e o contorno simplificado, e pode mandar até 500 relatos); o servidor não refaz as regras do histórico do lote (confia na conferência do app, que roda antes de gravar); a sessão fica no armazenamento do navegador, como em todo app Supabase.
+
+### Regra de acesso (pedida pelo Lucas, 18 nov 2026)
+
+"Meu login acessa todas; o cliente só a fazenda dele; ninguém cria conta sem minha permissão." Migração `20261118120000_convites.sql`:
+
+- **Administrador** (`app_admins`): só ele abre fazenda nova (gatilho em `farms`). Quem era dono de fazenda quando a migração rodou virou administrador. O Lucas vê todas porque abre todas; administrador **não** enxerga fazenda de que não é dono. Se um dia houver mais de um consultor, decidir se administrador vê tudo.
+- **Convite** (`farm_invites`): "Dar acesso" com e-mail sem conta cria convite. O cliente toca em "Criar conta" com esse e-mail; ao entrar, `claim_farm_invites` vira acesso (só com e-mail confirmado). Convite pode ser cancelado.
+- **Trava de cadastro**: `hook_before_user_created` recusa e-mail sem convite aberto. Só funciona depois de ligado no painel (Authentication → Hooks → Before User Created → Postgres → essa função). Não se sabe se o hook também barra "Invite user" do painel do Supabase; o caminho previsto é o convite pelo app.
+- Cliente entra como `member`: vê e grava tudo da fazenda dele (mover gado, pesar etc.), mas não dá acesso a ninguém. Acesso só de leitura não existe ainda.
+- Falta: "esqueci a senha". Hoje quem esquece precisa que o Lucas troque a senha no painel do Supabase.
 
 Ideias incluídas sem pedido, que o Lucas pode tirar: aviso de pesagem com mais de 45 dias no Painel; limpeza do nome do piquete que traz a área junto; criar módulo já com o grupo de piquetes da mesma pasta ou letra; GPS no mapa e no caderno.
 

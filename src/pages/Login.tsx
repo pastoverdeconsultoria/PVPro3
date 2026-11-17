@@ -44,7 +44,10 @@ export function Login() {
             <input id={id} className="in" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" value={email} onChange={(e) => setEmail(e.target.value)} />
           )}
         </Field>
-        <Field label="Senha" hint={mode === 'criar' ? 'Pelo menos 6 caracteres.' : undefined}>
+        {mode === 'criar' ? (
+          <p className="note m-0">Só cria conta quem recebeu convite. Use o mesmo e-mail que o consultor cadastrou.</p>
+        ) : null}
+        <Field label="Senha" hint={mode === 'criar' ? 'Pelo menos 8 caracteres, com letras e números.' : undefined}>
           {(id) => (
             <input id={id} className="in" type="password" autoComplete={mode === 'entrar' ? 'current-password' : 'new-password'} value={password} onChange={(e) => setPassword(e.target.value)} />
           )}

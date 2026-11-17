@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryBackend, type MemoryBackend } from '../data/memoryRepo';
 import type { NewFarm } from '../data/types';
 import { fakeClimateApi } from '../test/climateFixture';
@@ -99,12 +99,15 @@ describe('fazenda e acesso', () => {
   it('o dono dá acesso a uma conta existente, e ela passa a enxergar a fazenda; depois tira', async () => {
     const bruno = await be.signInAs('bruno@exemplo.test');
     await be.signInAs('ana@exemplo.test');
+    await vi.waitFor(() => expect(s().data?.farm.id).toBe(nf.farm.id));
 
     expect((await s().loadMembers()).ok).toBe(true);
     expect(s().members).toMatchObject([{ email: 'ana@exemplo.test', role: 'owner' }]);
-    expect(err(await s().addMember('sem-arroba'))).toBe('Informe o e-mail da conta.');
-    expect(err(await s().addMember('ninguem@exemplo.test'))).toMatch(/Não existe conta com esse e-mail/);
-    expect((await s().addMember(' Bruno@Exemplo.test ')).ok).toBe(true);
+    expect(err(await s().addMember('sem-arroba'))).toBe('Informe um e-mail válido.');
+    // E-mail sem conta fica convidado, sem entrar na lista de quem tem acesso.
+    expect(await s().addMember('ninguem@exemplo.test')).toEqual({ ok: true, value: 'invited' });
+    expect(s().invites!.map((i) => i.email)).toEqual(['ninguem@exemplo.test']);
+    expect(await s().addMember(' Bruno@Exemplo.test ')).toEqual({ ok: true, value: 'member' });
     expect(s().members!.map((m) => [m.email, m.role])).toEqual([
       ['ana@exemplo.test', 'owner'],
       ['bruno@exemplo.test', 'member'],
@@ -116,6 +119,7 @@ describe('fazenda e acesso', () => {
     await expect(be.repo.addMember(nf.farm.id, 'ana@exemplo.test')).rejects.toThrow('Só o dono');
 
     await be.signInAs('ana@exemplo.test');
+    await vi.waitFor(() => expect(s().data?.farm.id).toBe(nf.farm.id));
     expect(err(await s().removeMember(s().user!.id))).toBe('Você não pode tirar o próprio acesso.');
     expect((await s().removeMember(bruno.id)).ok).toBe(true);
     expect(s().members).toHaveLength(1);

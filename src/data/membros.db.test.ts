@@ -70,9 +70,10 @@ describe('membros da fazenda', () => {
     });
   });
 
-  it('e-mail sem conta dá erro claro', async () => {
-    const err = await as(db, ana, () => errorOf(() => add('ninguem@exemplo.test')));
-    expect(err).toMatch(/Não existe conta com esse e-mail/);
+  it('e-mail sem conta vira convite; e-mail torto dá erro claro', async () => {
+    const r = await as(db, ana, () => add('ninguem@exemplo.test'));
+    expect((r.rows[0] as R).add_farm_member).toBe('invited');
+    expect(await as(db, ana, () => errorOf(() => add('sem-arroba')))).toMatch(/E-mail inválido/);
   });
 
   it('quem não é dono não dá nem tira acesso; de fora não lista ninguém', async () => {

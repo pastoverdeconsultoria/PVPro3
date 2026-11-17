@@ -40,6 +40,7 @@ export default defineConfig({
     setupFiles: ['src/test/setup.ts'],
     // Os testes de tela digitam e clicam de verdade; em máquina carregada passam de 5 s.
     testTimeout: 30_000,
-    hookTimeout: 60_000,
+    // Cada arquivo de banco sobe um Postgres inteiro; em paralelo, a máquina pesa.
+    hookTimeout: 180_000,
   },
 });

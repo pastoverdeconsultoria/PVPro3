@@ -5,6 +5,7 @@ import {
   type Auth,
   type Farm,
   type FarmData,
+  type FarmInvite,
   type FarmMember,
   type Lot,
   type Module,
@@ -45,6 +46,8 @@ export interface AppState {
   farms: Farm[];
   /** A lista de fazendas já foi lida (do servidor ou da cópia do aparelho). */
   farmsReady: boolean;
+  /** A conta abre fazenda nova (administrador). Null enquanto não se sabe (sem sinal). */
+  canCreateFarms: boolean | null;
   farmId: string | null;
   data: FarmData | null;
   loading: boolean;
@@ -62,6 +65,8 @@ export interface AppState {
   useCalibratedM: boolean;
   /** Quem tem acesso à fazenda aberta. Null enquanto não foi lido. */
   members: FarmMember[] | null;
+  /** Convites ainda não usados da fazenda aberta (só o dono vê). */
+  invites: FarmInvite[] | null;
   /** Registros feitos sem sinal, guardados no aparelho, esperando envio. */
   outbox: PendingOp[];
   /** Aviso quando um registro guardado sem sinal foi recusado pelo servidor. */
@@ -119,8 +124,10 @@ export interface AppState {
   removeFertilization(fertilizationId: string): Promise<Result<void>>;
   renameFarm(input: { name: string; municipality: string }): Promise<Result<void>>;
   loadMembers(): Promise<Result<void>>;
-  addMember(email: string): Promise<Result<void>>;
+  /** 'member': a conta já existia e entrou; 'invited': ficou o convite para a pessoa criar a conta. */
+  addMember(email: string): Promise<Result<'member' | 'invited'>>;
   removeMember(userId: string): Promise<Result<void>>;
+  cancelInvite(inviteId: string): Promise<Result<void>>;
   /** Envia o que ficou guardado sem sinal. Chamado ao abrir, quando o sinal volta e de tempos em tempos. */
   flushOutbox(): Promise<void>;
   dismissOutboxError(): void;
@@ -145,7 +152,7 @@ export type AppStore = StoreApi<AppState>;
 
 /** A cópia do clima vale por 6 horas dentro do mesmo dia. */
 const CLIMATE_MAX_AGE_MS = 6 * 3600_000;
-const NO_CLIMATE = { climate: null, climateState: 'idle' as const, climateError: null, climateStale: false, members: null, outbox: [] as PendingOp[], outboxError: null };
+const NO_CLIMATE = { climate: null, climateState: 'idle' as const, climateError: null, climateStale: false, members: null, invites: null, outbox: [] as PendingOp[], outboxError: null };
 
 /** Efeito de um registro guardado sem sinal sobre os dados da tela. Aplicar duas vezes não duplica. */
 function applyOp(d: FarmData, op: PendingOp): FarmData {
@@ -294,10 +301,10 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
     const applyUser = async (user: User | null) => {
       if (user?.id === get().user?.id && get().phase !== 'starting') return;
       if (!user) {
-        set({ phase: 'signedOut', user: null, farms: [], farmsReady: false, farmId: null, data: null, loadError: null, staleSince: null, ...NO_CLIMATE });
+        set({ phase: 'signedOut', user: null, farms: [], farmsReady: false, canCreateFarms: null, farmId: null, data: null, loadError: null, staleSince: null, ...NO_CLIMATE });
         return;
       }
-      set({ phase: 'signedIn', user, farms: [], farmsReady: false, farmId: null, data: null, loadError: null, staleSince: null, ...NO_CLIMATE });
+      set({ phase: 'signedIn', user, farms: [], farmsReady: false, canCreateFarms: null, farmId: null, data: null, loadError: null, staleSince: null, ...NO_CLIMATE });
       await get().loadFarms();
     };
 
@@ -306,6 +313,7 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
       user: null,
       farms: [],
       farmsReady: false,
+      canCreateFarms: null,
       farmId: null,
       data: null,
       loading: false,
@@ -350,9 +358,19 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
         const user = get().user;
         if (!user) return;
         set({ loading: true, loadError: null });
+        // Convite recebido vira acesso; corre junto com a lista, e se liberou
+        // fazenda nova a lista é lida de novo. Sem sinal, fica para a próxima.
+        const claimed = repo.claimInvites().catch(() => 0);
+        void repo
+          .canCreateFarms()
+          .then((v) => {
+            if (get().user?.id === user.id) set({ canCreateFarms: v });
+          })
+          .catch(() => undefined);
         let farms: Farm[];
         try {
           farms = await repo.listFarms();
+          if ((await claimed) > 0) farms = await repo.listFarms();
           cache.saveFarms(user.id, farms);
         } catch (e) {
           const saved = e instanceof RepoError && e.offline ? cache.loadFarms(user.id) : null;
@@ -915,8 +933,8 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
         const farmId = get().farmId;
         if (!farmId) return fail('Nenhuma fazenda aberta.');
         try {
-          const members = await repo.listMembers(farmId);
-          if (get().farmId === farmId) set({ members });
+          const [members, invites] = await Promise.all([repo.listMembers(farmId), repo.listInvites(farmId)]);
+          if (get().farmId === farmId) set({ members, invites });
           return OK;
         } catch (e) {
           return fail(message(e, 'Não deu para ler quem tem acesso.'));
@@ -927,8 +945,18 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
         const farmId = get().farmId;
         if (!farmId) return fail('Nenhuma fazenda aberta.');
         const clean = email.trim();
-        if (!/^\S+@\S+\.\S+$/.test(clean)) return fail('Informe o e-mail da conta.');
-        const r = await attempt('dar acesso', () => repo.addMember(farmId, clean));
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)) return fail('Informe um e-mail válido.');
+        try {
+          const kind = await repo.addMember(farmId, clean);
+          await get().loadMembers();
+          return { ok: true, value: kind };
+        } catch (e) {
+          return fail(message(e, 'Não deu para dar acesso.'));
+        }
+      },
+
+      async cancelInvite(inviteId) {
+        const r = await attempt('cancelar o convite', () => repo.cancelInvite(inviteId));
         if (r.ok) await get().loadMembers();
         return r;
       },

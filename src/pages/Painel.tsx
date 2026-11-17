@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { MoveSheet } from '../components/LotSheets';
 import { differs, locationText } from '../lib/farm/farmView';
-import type { ModuleView } from '../lib/farm/modules';
+import { moveQueue, whenText, type ModuleView } from '../lib/farm/modules';
 import { gmdText, nf } from '../lib/format';
 import { formatDayMonth } from '../lib/lots/dates';
 import { projectScope } from '../lib/calc/projection';
@@ -11,7 +11,7 @@ import { useApp, useClimateModel, useFarmView } from '../state/AppContext';
 
 export function Painel() {
   const fv = useFarmView();
-  const [moving, setMoving] = useState<string | null>(null);
+  const [moving, setMoving] = useState<{ lotId: string; to?: string } | null>(null);
   const newReports = useApp((s) => s.data?.reports.reduce((n, r) => n + (r.status === 'novo' ? 1 : 0), 0) ?? 0);
   const cm = useClimateModel();
   const loadClimate = useApp((s) => s.loadClimate);
@@ -28,6 +28,7 @@ export function Painel() {
   const overCapacity = farmProjection && capacityNow > 0 && farmProjection.current > capacityNow * 1.05 ? farmProjection.current / capacityNow - 1 : null;
   const t = view.totals;
   const withAnimals = view.lots.filter((l) => l.heads > 0);
+  const queue = moveQueue(modules);
   const problems = view.lots.filter((l) => l.problem);
   const outside = withAnimals.filter((l) => l.location.kind !== 'no_piquete');
   const noHistory = view.paddocks.filter((p) => p.paddock.isGrazing && !p.occupants.length && p.restDays == null).length;
@@ -133,6 +134,31 @@ export function Painel() {
         </section>
       ) : null}
 
+      {queue.length ? (
+        <section className="card flex flex-col gap-3" aria-label="Fila de trocas">
+          <h2 className="h2">Fila de trocas</h2>
+          <ul className="m-0 flex list-none flex-col gap-2 p-0">
+            {queue.map((q) => (
+              <li key={q.module.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-[14px] bg-bg px-3.5 py-2.5">
+                <span className="flex min-w-0 flex-col gap-1">
+                  <span className={`chip self-start ${q.daysUntil <= 1 ? (q.daysUntil < 0 ? 'border-warn text-warn' : 'chip-on') : ''}`}>{whenText(q.daysUntil)}</span>
+                  <span className="font-display text-[16px] font-semibold">
+                    {q.lotName}: {q.from.paddock.name} ➜ {q.to.paddock.name}
+                  </span>
+                  <span className="text-[13px] text-muted">
+                    {q.module.name} · {q.restAtEntry == null ? 'destino sem dado de descanso' : `descanso na entrada ${q.restAtEntry} d`}
+                  </span>
+                </span>
+                <button type="button" className="btn px-3.5 text-[13px]" aria-label={`Mover ${q.lotName} para ${q.to.paddock.name}`} onClick={() => setMoving({ lotId: q.lotId, to: q.to.paddock.id })}>
+                  Mover
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="k m-0 text-xs">Pelo plano de dias de ocupação de cada módulo e pela ordem do rodízio. É sugestão: a mudança só vale quando registrada.</p>
+        </section>
+      ) : null}
+
       {!view.lots.length ? (
         <section className="card flex flex-col items-start gap-3">
           <h2 className="h2">Falta cadastrar o gado</h2>
@@ -164,7 +190,7 @@ export function Painel() {
                     </span>
                   </span>
                   {l.heads > 0 ? (
-                    <button type="button" className="btn px-3.5 text-[13px]" onClick={() => setMoving(l.lot.id)}>
+                    <button type="button" className="btn px-3.5 text-[13px]" onClick={() => setMoving({ lotId: l.lot.id })}>
                       Mover
                     </button>
                   ) : null}
@@ -197,7 +223,7 @@ export function Painel() {
         </p>
       ) : null}
 
-      {moving ? <MoveSheet lotId={moving} onClose={() => setMoving(null)} /> : null}
+      {moving ? <MoveSheet lotId={moving.lotId} suggestedPaddockId={moving.to} onClose={() => setMoving(null)} /> : null}
     </div>
   );
 }

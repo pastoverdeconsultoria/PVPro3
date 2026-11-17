@@ -101,3 +101,51 @@ export function checkComposition(
   }
   return null;
 }
+
+/** Próxima troca prevista de um módulo, pelo plano de dias de ocupação. */
+export interface PlannedMove {
+  module: Module;
+  lotId: string;
+  lotName: string;
+  from: PaddockView;
+  to: PaddockView;
+  /** Dias até a troca: 1 = amanhã, 0 = hoje, negativo = atrasada. */
+  daysUntil: number;
+  /** Descanso que o piquete de destino terá no dia da troca. Null sem dado de saída. */
+  restAtEntry: number | null;
+}
+
+/**
+ * Fila de trocas: para cada módulo com piquete ocupado, quando o lote deve ir
+ * para o próximo da ordem. O último dia planejado de ocupação é a véspera da
+ * troca (dia 6 de 6 → troca amanhã). Não entra módulo com um piquete só, nem
+ * quando o próximo piquete já está ocupado.
+ */
+export function moveQueue(mods: readonly ModuleView[]): PlannedMove[] {
+  const out: PlannedMove[] = [];
+  for (const m of mods) {
+    const from = m.current;
+    const to = m.next;
+    if (!from || !to || to === from || to.occupants.length || from.dayOfUse == null) continue;
+    const lot = from.occupants[0];
+    const daysUntil = m.module.occupationDays - from.dayOfUse + 1;
+    out.push({
+      module: m.module,
+      lotId: lot.lot.id,
+      lotName: from.occupants.map((o) => o.lot.name).join(' e '),
+      from,
+      to,
+      daysUntil,
+      restAtEntry: to.restDays == null ? null : to.restDays + Math.max(0, daysUntil),
+    });
+  }
+  return out.sort((a, b) => a.daysUntil - b.daysUntil);
+}
+
+/** "Amanhã", "Em 3 dias", "Hoje", "Atrasada 2 dias". */
+export function whenText(daysUntil: number): string {
+  if (daysUntil === 0) return 'Hoje';
+  if (daysUntil === 1) return 'Amanhã';
+  if (daysUntil > 1) return `Em ${daysUntil} dias`;
+  return `Atrasada ${-daysUntil} ${daysUntil === -1 ? 'dia' : 'dias'}`;
+}

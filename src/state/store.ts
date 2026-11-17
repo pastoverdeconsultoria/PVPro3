@@ -19,7 +19,7 @@ import { climateCache, type ClimateApi, type ClimateSeries } from '../lib/climat
 import { checkComposition } from '../lib/farm/modules';
 import { checkChange, planMove, planRemoval, planRestore, type Result } from '../lib/lots/changes';
 import { addDays, formatBr, isIsoDate, todayLocal, type IsoDate } from '../lib/lots/dates';
-import { deriveLot } from '../lib/lots/deriveLot';
+import { deriveLot, stateAt } from '../lib/lots/deriveLot';
 import type { LotEvent } from '../lib/lots/types';
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
@@ -77,6 +77,8 @@ export interface AppState {
   createLot(input: NewLotInput): Promise<Result<void>>;
   moveLot(lotId: string, toPaddockId: string, date: IsoDate): Promise<Result<void>>;
   addEvent(lotId: string, draft: EventDraft): Promise<Result<void>>;
+  /** Tira animais de um lote e põe em outro, num registro só (saída e entrada ligadas). */
+  transferAnimals(fromLotId: string, toLotId: string, heads: number, date: IsoDate): Promise<Result<void>>;
   removeEvent(lotId: string, eventId: string): Promise<Result<void>>;
   restoreEvent(lotId: string, eventId: string): Promise<Result<void>>;
   deleteLot(lotId: string): Promise<Result<void>>;
@@ -190,6 +192,26 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
       const report = data?.reports.find((r) => r.id === reportId);
       if (!data || !report) return null;
       return { data, report };
+    };
+
+    /**
+     * Registros de OUTROS lotes ligados a este (a outra ponta de uma transferência).
+     * Eles mudam junto, e o histórico de cada lote afetado tem de continuar
+     * consistente. Devolve os ids a alterar, ou o erro.
+     */
+    const linkedInOtherLots = (lotId: string, eventId: string, deletedAt: string | null): Result<string[]> => {
+      const data = get().data;
+      const target = data?.events.find((e) => e.id === eventId);
+      if (!data || !target?.link) return { ok: true, value: [] };
+      const partners = data.events.filter((e) => e.link === target.link && e.lotId !== lotId && (deletedAt ? !e.deletedAt : !!e.deletedAt));
+      for (const otherLot of new Set(partners.map((e) => e.lotId))) {
+        const ids = new Set(partners.filter((e) => e.lotId === otherLot).map((e) => e.id));
+        const next = data.events.filter((e) => e.lotId === otherLot).map((e) => (ids.has(e.id) ? { ...e, deletedAt } : e));
+        const name = data.lots.find((l) => l.id === otherLot)?.name;
+        const check = checkChange(otherLot, next, name);
+        if (!check.ok) return check;
+      }
+      return { ok: true, value: partners.map((e) => e.id) };
     };
 
     const applyUser = async (user: User | null) => {
@@ -464,13 +486,46 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
         }
       },
 
+      async transferAnimals(fromLotId, toLotId, heads, date) {
+        const from = lotContext(fromLotId);
+        const to = lotContext(toLotId);
+        if (!from) return fail('Lote não encontrado.');
+        if (!to || toLotId === fromLotId) return fail('Escolha o lote que recebe os animais.');
+        if (!isIsoDate(date)) return fail('Informe a data.');
+        if (date > today()) return fail('A data não pode ser depois de hoje.');
+        if (!Number.isInteger(heads) || heads <= 0) return fail('Informe o número de cabeças.');
+        for (const ctx of [from, to]) {
+          const formation = deriveLot(ctx.lot.id, ctx.events).formationDate;
+          if (formation && date < formation) return fail(`${ctx.lot.name} foi formado em ${formatBr(formation)}.`);
+        }
+        // Os animais chegam ao outro lote com o peso médio que tinham neste, na data.
+        const state = stateAt(deriveLot(fromLotId, from.events), date);
+        if (!state || state.heads < heads) return fail(`${from.lot.name} não tem ${heads} cabeças em ${formatBr(date)}.`);
+        const link = crypto.randomUUID();
+        const out: LotEvent = { id: crypto.randomUUID(), lotId: fromLotId, date, type: 'transf_out', heads, reason: `transferência para ${to.lot.name}`, link };
+        const into: LotEvent = { id: crypto.randomUUID(), lotId: toLotId, date, type: 'transf_in', heads, weightKg: Number(state.weightKg.toFixed(2)), reason: `transferência de ${from.lot.name}`, link };
+        const checkOut = checkChange(fromLotId, [...from.events, out], from.lot.name);
+        if (!checkOut.ok) return checkOut;
+        const checkIn = checkChange(toLotId, [...to.events, into], to.lot.name);
+        if (!checkIn.ok) return checkIn;
+        try {
+          // Saída e entrada na mesma chamada: ou as duas, ou nenhuma.
+          mergeEvents(await repo.recordEvents(from.data.farm.id, [out, into]));
+          return OK;
+        } catch (e) {
+          return fail(message(e, 'Não deu para gravar a transferência.'));
+        }
+      },
+
       async removeEvent(lotId, eventId) {
         const ctx = lotContext(lotId);
         if (!ctx) return fail('Lote não encontrado.');
         const deletedAt = now().toISOString();
         const plan = planRemoval(lotId, ctx.events, eventId, deletedAt, ctx.lot.name);
         if (!plan.ok) return plan;
-        const ids = plan.value.filter((e) => e.deletedAt === deletedAt).map((e) => e.id);
+        const others = linkedInOtherLots(lotId, eventId, deletedAt);
+        if (!others.ok) return others;
+        const ids = [...plan.value.filter((e) => e.deletedAt === deletedAt).map((e) => e.id), ...others.value];
         const r = await attempt('apagar o registro', () => repo.setEventsDeleted(ids, deletedAt));
         if (r.ok) setDeletedLocally(ids, deletedAt);
         return r;
@@ -482,7 +537,9 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
         const plan = planRestore(lotId, ctx.events, eventId, ctx.lot.name);
         if (!plan.ok) return plan;
         const before = new Map(ctx.events.map((e) => [e.id, e.deletedAt]));
-        const ids = plan.value.filter((e) => !e.deletedAt && before.get(e.id)).map((e) => e.id);
+        const others = linkedInOtherLots(lotId, eventId, null);
+        if (!others.ok) return others;
+        const ids = [...plan.value.filter((e) => !e.deletedAt && before.get(e.id)).map((e) => e.id), ...others.value];
         const r = await attempt('desfazer a exclusão', () => repo.setEventsDeleted(ids, null));
         if (r.ok) setDeletedLocally(ids, null);
         return r;

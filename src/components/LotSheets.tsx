@@ -33,12 +33,12 @@ function Buttons({ busy, onClose, label = 'Gravar' }: { busy: boolean; onClose: 
 }
 
 /** Mudança de piquete. Vem com o lote já escolhido (do Rebanho) ou com o destino já escolhido (do Mapa). */
-export function MoveSheet({ lotId, paddockId, onClose }: { lotId?: string; paddockId?: string; onClose: () => void }) {
+export function MoveSheet({ lotId, paddockId, suggestedPaddockId, onClose }: { lotId?: string; paddockId?: string; /** Destino já escolhido, que ainda pode ser trocado. */ suggestedPaddockId?: string; onClose: () => void }) {
   const fv = useFarmView();
   const moveLot = useApp((s) => s.moveLot);
   const lots = fv?.view.lots.filter((l) => l.heads > 0) ?? [];
   const [lot, setLot] = useState(lotId ?? (lots.length === 1 ? lots[0].lot.id : ''));
-  const [dest, setDest] = useState(paddockId ?? '');
+  const [dest, setDest] = useState(paddockId ?? suggestedPaddockId ?? '');
   const [date, setDate] = useState(todayLocal());
   const { busy, error, setError, run } = useAction();
   if (!fv) return null;
@@ -185,12 +185,16 @@ export function WeighSheet({ lot, onClose }: { lot: LotView; onClose: () => void
   );
 }
 
-type ChangeKind = 'entrada' | 'saida' | 'categoria' | 'suplemento';
-const CHANGE_LABEL: Record<ChangeKind, string> = { entrada: 'Entrada', saida: 'Saída', categoria: 'Categoria', suplemento: 'Suplemento' };
+type ChangeKind = 'entrada' | 'saida' | 'transferir' | 'categoria' | 'suplemento';
+const CHANGE_LABEL: Record<ChangeKind, string> = { entrada: 'Entrada', saida: 'Saída', transferir: 'Transferir', categoria: 'Categoria', suplemento: 'Suplemento' };
 
 /** Alteração do lote: animais que entram ou saem, troca de categoria e suplemento. */
 export function ChangeSheet({ lot, onClose }: { lot: LotView; onClose: () => void }) {
   const addEvent = useApp((s) => s.addEvent);
+  const transferAnimals = useApp((s) => s.transferAnimals);
+  const fv = useFarmView();
+  const others = fv?.view.lots.filter((l) => l.lot.id !== lot.lot.id) ?? [];
+  const [toLot, setToLot] = useState('');
   const [kind, setKind] = useState<ChangeKind>('entrada');
   const [heads, setHeads] = useState('');
   const [weight, setWeight] = useState('');
@@ -209,6 +213,8 @@ export function ChangeSheet({ lot, onClose }: { lot: LotView; onClose: () => voi
       }
       case 'saida':
         return run(() => addEvent(lot.lot.id, { type: 'animais_saida', date, heads: parseNum(heads), ...(reason ? { reason } : {}) }), onClose);
+      case 'transferir':
+        return run(() => transferAnimals(lot.lot.id, toLot, parseNum(heads), date), onClose);
       case 'categoria':
         return run(() => addEvent(lot.lot.id, { type: 'categoria', date, category }), onClose);
       case 'suplemento':
@@ -268,6 +274,27 @@ export function ChangeSheet({ lot, onClose }: { lot: LotView; onClose: () => voi
                 </select>
               )}
             </Field>
+          </>
+        ) : null}
+
+        {kind === 'transferir' ? (
+          <>
+            <Field label="Para o lote">
+              {(id) => (
+                <select id={id} className="in" value={toLot} onChange={(e) => setToLot(e.target.value)}>
+                  <option value="">Escolha…</option>
+                  {others.map((l) => (
+                    <option key={l.lot.id} value={l.lot.id}>
+                      {l.lot.name} ({nf(l.heads)} cab.)
+                    </option>
+                  ))}
+                </select>
+              )}
+            </Field>
+            <Field label="Cabeças transferidas" hint="Saem deste lote e entram no outro com o peso médio deste, no mesmo registro.">
+              {(id) => <input id={id} className="in" inputMode="numeric" value={heads} onChange={(e) => setHeads(e.target.value)} />}
+            </Field>
+            {!others.length ? <p className="note">Não há outro lote para receber os animais.</p> : null}
           </>
         ) : null}
 

@@ -262,10 +262,10 @@ Ainda não existe: reimportar KML ou redesenhar piquete e excluir fazenda (preci
 
 Feita pelo Claude a pedido do Lucas, lendo o SQL e o código. Corrigido no código:
 
-- Cabeçalhos no : política de conteúdo (só roda script do próprio site; só conversa com o Supabase e o Open-Meteo),  (o endereço do caderno tem o token), sem indexação em busca, sem moldura em outro site, e só o GPS liberado. Qualquer serviço novo que o app chame precisa entrar no , senão o navegador bloqueia.
+- Cabeçalhos no `vercel.json`: política de conteúdo (só roda script do próprio site; só conversa com o Supabase e o Open-Meteo), `Referrer-Policy: no-referrer` (o endereço do caderno tem o token), sem indexação em busca, sem moldura em outro site, e só o GPS liberado. Qualquer serviço novo que o app chame precisa entrar no `connect-src`, senão o navegador bloqueia.
 - Limite de tamanho no arquivo de mapa (25 MB, e 60 MB descompactado) e de 2.000 polígonos.
 
-Conferido e sem achado: nenhuma tabela tem acesso de anônimo nem DELETE; toda função com privilégio elevado fixa o  e confere vínculo ou token; o app não usa HTML cru nem ; a chave publicada é a pública.
+Conferido e sem achado: nenhuma tabela tem acesso de anônimo nem DELETE; toda função com privilégio elevado fixa o `search_path` e confere vínculo ou token; o app não usa HTML cru nem `eval`; a chave publicada é a pública.
 
 Riscos que dependem de configuração do Lucas no Supabase, não de código:
 

@@ -254,7 +254,9 @@ Em 16 nov 2026 o Lucas disse "Continue. Faça tudo que tem pra fazer". Foi feito
 
 Não conferido: nada disso rodou contra o Supabase real nem em celular de verdade. O clima foi conferido contra o Open-Meteo só no formato da resposta, com as coordenadas da fazenda inventada; a projeção nunca foi comparada com fazenda real. Com menos de três anos de histórico disponível num ponto, não há cenário e os meses à frente ficam sem projeção (a tela avisa).
 
-Ainda não existe: reimportar KML ou redesenhar piquete, editar registro, satélite e zoom no mapa, excluir fazenda.
+Feito depois, em 17 nov 2026, sem depender de SQL: zoom e arrasto no mapa (`FarmMap`) e correção da data de um registro (`changeEventDate`: apaga o antigo de forma suave e grava um novo; se o novo não entra, devolve o antigo).
+
+Ainda não existe: reimportar KML ou redesenhar piquete e excluir fazenda (precisam de permissão nova no banco), corrigir outro campo de um registro além da data, e satélite no mapa.
 
 O KML real usado para testar a importação fica fora do repositório, por decisão do Lucas. Nenhum nome de fazenda real entra no repositório, que é público.
 

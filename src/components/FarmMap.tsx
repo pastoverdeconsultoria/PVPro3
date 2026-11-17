@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { Icon } from './Icon';
 import { areaWeightedCentroid, localProjector, type LngLat } from '../lib/geo';
 
 export interface MapShape {
@@ -86,18 +87,93 @@ export function FarmMap({ shapes, styleOf, points = [], selectedId, onSelect, la
     };
   }, [shapes, points]);
 
+  // Zoom: `scale` de 1 (tudo) a 8; `cx` e `cy` são o centro da vista, em fração do mapa.
+  const [zoom, setZoom] = useState({ scale: 1, cx: 0.5, cy: 0.5 });
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const dragged = useRef(false);
+
   if (!geo) return null;
   const { box } = geo;
-  const unit = Math.max(box.w, box.h);
+  const clampCenter = (scale: number, c: number) => Math.min(1 - 0.5 / scale, Math.max(0.5 / scale, c));
+  const view = {
+    w: box.w / zoom.scale,
+    h: box.h / zoom.scale,
+    x: box.x + clampCenter(zoom.scale, zoom.cx) * box.w - box.w / zoom.scale / 2,
+    y: box.y + clampCenter(zoom.scale, zoom.cy) * box.h - box.h / zoom.scale / 2,
+  };
+  // Texto e traços acompanham a vista: ao aproximar, o nome do piquete pequeno passa a caber.
+  const unit = Math.max(view.w, view.h);
   const selected = geo.items.find((i) => i.id === selectedId);
 
+  const zoomBy = (factor: number) =>
+    setZoom((z) => {
+      const scale = Math.min(8, Math.max(1, z.scale * factor));
+      return scale === 1 ? { scale: 1, cx: 0.5, cy: 0.5 } : { scale, cx: clampCenter(scale, z.cx), cy: clampCenter(scale, z.cy) };
+    });
+
+  const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.current.size === 1) dragged.current = false;
+  };
+  const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
+    const prev = pointers.current.get(e.pointerId);
+    if (!prev) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (pointers.current.size === 2) {
+      // Pinça: a distância entre os dois dedos dá o fator de zoom.
+      const other = [...pointers.current.entries()].find(([id]) => id !== e.pointerId)![1];
+      const before = Math.hypot(prev.x - other.x, prev.y - other.y);
+      const after = Math.hypot(e.clientX - other.x, e.clientY - other.y);
+      if (before > 0 && after > 0) zoomBy(after / before);
+      dragged.current = true;
+    } else if (zoom.scale > 1 && rect.width > 0 && rect.height > 0) {
+      const dx = e.clientX - prev.x;
+      const dy = e.clientY - prev.y;
+      if (Math.abs(dx) + Math.abs(dy) > 3) dragged.current = true;
+      setZoom((z) => ({ scale: z.scale, cx: clampCenter(z.scale, z.cx - dx / rect.width / z.scale), cy: clampCenter(z.scale, z.cy - dy / rect.height / z.scale) }));
+    }
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  };
+  const onPointerEnd = (e: ReactPointerEvent<SVGSVGElement>) => {
+    pointers.current.delete(e.pointerId);
+  };
+  // Tocar depois de arrastar ou de dar zoom com os dedos não seleciona piquete.
+  const pick = (id: string) => {
+    if (dragged.current) {
+      dragged.current = false;
+      return;
+    }
+    onSelect?.(id);
+  };
+
   return (
+    <div className="relative">
+      <div className="absolute right-1 top-1 z-10 flex flex-col gap-1.5" role="group" aria-label="Zoom do mapa">
+        <button type="button" className="btn h-[44px] w-[44px] bg-card/90 !px-0" aria-label="Aproximar" disabled={zoom.scale >= 8} onClick={() => zoomBy(1.6)}>
+          <Icon name="plus" />
+        </button>
+        <button type="button" className="btn h-[44px] w-[44px] bg-card/90 !px-0 text-[22px] leading-none" aria-label="Afastar" disabled={zoom.scale <= 1} onClick={() => zoomBy(1 / 1.6)}>
+          −
+        </button>
+        {zoom.scale > 1 ? (
+          <button type="button" className="btn h-[44px] w-[44px] bg-card/90 !px-0 text-[11px]" aria-label="Ver o mapa inteiro" onClick={() => setZoom({ scale: 1, cx: 0.5, cy: 0.5 })}>
+            tudo
+          </button>
+        ) : null}
+      </div>
     <svg
       role="group"
       aria-label={label}
-      viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
+      viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
       className="block max-h-[72dvh] w-full select-none"
       preserveAspectRatio="xMidYMid meet"
+      // Com zoom, o dedo arrasta o mapa; sem zoom, a página rola normalmente.
+      style={{ touchAction: zoom.scale > 1 ? 'none' : 'pan-y' }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerEnd}
+      onPointerCancel={onPointerEnd}
+      onPointerLeave={onPointerEnd}
     >
       {geo.items.map((it) => {
         const st = styleOf(it.id);
@@ -117,7 +193,7 @@ export function FarmMap({ shapes, styleOf, points = [], selectedId, onSelect, la
             tabIndex={onSelect ? 0 : -1}
             aria-label={[it.name, ...lines].join(', ')}
             aria-pressed={selectedId === it.id}
-            onClick={() => onSelect?.(it.id)}
+            onClick={() => pick(it.id)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
@@ -162,5 +238,6 @@ export function FarmMap({ shapes, styleOf, points = [], selectedId, onSelect, la
         <circle key={i} cx={x} cy={y} r={unit * 0.009} fill="#6FA8FF" stroke={BG} strokeWidth={unit * 0.003} pointerEvents="none" />
       ))}
     </svg>
+    </div>
   );
 }

@@ -20,7 +20,7 @@ import { climateCache, type ClimateApi, type ClimateSeries } from '../lib/climat
 import { checkComposition } from '../lib/farm/modules';
 import { checkChange, planMove, planRemoval, planRestore, type Result } from '../lib/lots/changes';
 import { addDays, formatBr, isIsoDate, todayLocal, type IsoDate } from '../lib/lots/dates';
-import { deriveLot, stateAt } from '../lib/lots/deriveLot';
+import { deriveLot, orderEvents, stateAt } from '../lib/lots/deriveLot';
 import type { LotEvent } from '../lib/lots/types';
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
@@ -84,6 +84,12 @@ export interface AppState {
   addEvent(lotId: string, draft: EventDraft): Promise<Result<void>>;
   /** Tira animais de um lote e põe em outro, num registro só (saída e entrada ligadas). */
   transferAnimals(fromLotId: string, toLotId: string, heads: number, date: IsoDate): Promise<Result<void>>;
+  /**
+   * Corrige a data de um registro. O registro antigo é apagado (de forma suave) e
+   * um novo entra com a data certa; numa mudança de piquete ou transferência, as
+   * duas pontas mudam juntas. Tudo é recalculado e conferido antes de gravar.
+   */
+  changeEventDate(lotId: string, eventId: string, date: IsoDate): Promise<Result<void>>;
   removeEvent(lotId: string, eventId: string): Promise<Result<void>>;
   restoreEvent(lotId: string, eventId: string): Promise<Result<void>>;
   deleteLot(lotId: string): Promise<Result<void>>;
@@ -565,6 +571,52 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
         if (!checkIn.ok) return checkIn;
         // Saída e entrada na mesma chamada: ou as duas, ou nenhuma.
         return runOp({ id: crypto.randomUUID(), kind: 'events', events: [out, into] }, 'Não deu para gravar a transferência.');
+      },
+
+      async changeEventDate(lotId, eventId, date) {
+        const ctx = lotContext(lotId);
+        if (!ctx) return fail('Lote não encontrado.');
+        const target = ctx.events.find((e) => e.id === eventId && !e.deletedAt);
+        if (!target) return fail('Registro não encontrado.');
+        if (!isIsoDate(date)) return fail('Informe a data.');
+        if (date > today()) return fail('A data não pode ser depois de hoje.');
+        if (date === target.date) return OK;
+        if (get().outbox.length) return fail('Há registros esperando sinal. Envie esses primeiro e depois corrija a data.');
+
+        const data = ctx.data;
+        // A mudança de piquete e a transferência têm duas pontas, que andam juntas e na mesma ordem.
+        const group = orderEvents(target.link ? data.events.filter((e) => e.link === target.link) : [target]);
+        const oldIds = new Set(group.map((e) => e.id));
+        const link = target.link ? crypto.randomUUID() : null;
+        const deletedAt = now().toISOString();
+        const replacements = group.map((e) => {
+          const { seq: _seq, ...rest } = e;
+          return { ...rest, id: crypto.randomUUID(), date, deletedAt: null, link } as LotEvent;
+        });
+        for (const affected of new Set(group.map((e) => e.lotId))) {
+          const next = [
+            ...data.events.filter((e) => e.lotId === affected).map((e) => (oldIds.has(e.id) ? { ...e, deletedAt } : e)),
+            ...replacements.filter((e) => e.lotId === affected),
+          ];
+          const check = checkChange(affected, next, data.lots.find((l) => l.id === affected)?.name);
+          if (!check.ok) return check;
+        }
+
+        try {
+          await repo.setEventsDeleted([...oldIds], deletedAt);
+        } catch (e) {
+          return fail(message(e, 'Não deu para corrigir a data.'));
+        }
+        try {
+          const saved = await repo.recordEvents(data.farm.id, replacements);
+          setDeletedLocally([...oldIds], deletedAt);
+          mergeEvents(saved);
+          return OK;
+        } catch (e) {
+          // O novo não entrou: devolve o antigo, para o registro não sumir.
+          await repo.setEventsDeleted([...oldIds], null).catch(() => undefined);
+          return fail(message(e, 'Não deu para corrigir a data.'));
+        }
       },
 
       async removeEvent(lotId, eventId) {

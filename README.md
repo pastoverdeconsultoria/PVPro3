@@ -65,4 +65,6 @@ Etapa 4 escrita: clima estimado pelo centroide (previsão e chuva mês a mês ao
 
 Também: fila de trocas no Painel, transferência de animais entre lotes, renomear a fazenda, dar e tirar acesso de outras contas pelo e-mail, e o consultor registrar sem sinal (mudança de gado, registros do lote, lote novo e chuva ficam guardados no aparelho e são enviados depois).
 
-Ainda não existe: reimportar o KML ou redesenhar piquete, editar um registro (hoje é apagar e lançar de novo), imagem de satélite e zoom no mapa. No app do consultor, sem sinal ele abre e mostra a última cópia, mas não grava: a fila offline existe só no caderno do vaqueiro.
+O mapa tem zoom (botões e pinça) e arrasto. No histórico do lote dá para corrigir a data de um registro: o antigo é apagado de forma suave e um novo entra, com as duas pontas de uma mudança ou transferência indo juntas.
+
+Ainda não existe: reimportar o KML ou redesenhar piquete, excluir fazenda (os dois precisam de mudança no banco), corrigir outro campo de um registro além da data (é apagar e lançar de novo) e imagem de satélite no mapa. No app do consultor, sem sinal ele abre e mostra a última cópia, mas não grava: a fila offline existe só no caderno do vaqueiro.

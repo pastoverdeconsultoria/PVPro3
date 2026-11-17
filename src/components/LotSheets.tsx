@@ -337,7 +337,9 @@ export function HistorySheet({ lot, onClose }: { lot: LotView; onClose: () => vo
   const removeEvent = useApp((s) => s.removeEvent);
   const restoreEvent = useApp((s) => s.restoreEvent);
   const deleteLot = useApp((s) => s.deleteLot);
+  const changeEventDate = useApp((s) => s.changeEventDate);
   const [confirm, setConfirm] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ id: string; date: string } | null>(null);
   const { busy, error, run } = useAction();
   if (!fv) return null;
 
@@ -356,8 +358,25 @@ export function HistorySheet({ lot, onClose }: { lot: LotView; onClose: () => vo
             <span className="flex min-w-0 flex-col">
               <span className="k text-xs">{formatBr(e.date)}</span>
               <span className="text-sm">{text(e)}</span>
+              {editing?.id === e.id ? (
+                <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <input className="in min-h-[44px] w-[168px]" type="date" aria-label={`Nova data: ${text(e)}`} max={todayLocal()} value={editing.date} onChange={(ev) => setEditing({ id: e.id, date: ev.target.value })} />
+                  <button type="button" className="btn btn-pri min-h-[44px] px-3 text-[13px]" disabled={busy} onClick={() => void run(() => changeEventDate(lot.lot.id, e.id, editing.date), () => setEditing(null))}>
+                    Gravar data
+                  </button>
+                  <button type="button" className="btn min-h-[44px] px-3 text-[13px]" onClick={() => setEditing(null)}>
+                    Cancelar
+                  </button>
+                </span>
+              ) : null}
             </span>
-            {e.type === 'inicio' ? null : confirm === e.id ? (
+            <span className="flex shrink-0 items-center gap-1.5">
+            {editing?.id === e.id || confirm === e.id ? null : (
+              <button type="button" className="btn min-h-[44px] px-3 text-[13px]" aria-label={`Corrigir a data: ${text(e)}`} onClick={() => setEditing({ id: e.id, date: e.date })}>
+                Data
+              </button>
+            )}
+            {e.type === 'inicio' || editing?.id === e.id ? null : confirm === e.id ? (
               <span className="flex shrink-0 gap-1.5">
                 <button type="button" className="btn btn-danger min-h-[44px] px-3 text-[13px]" disabled={busy} onClick={() => void run(() => removeEvent(lot.lot.id, e.id), () => setConfirm(null))}>
                   Apagar
@@ -371,10 +390,11 @@ export function HistorySheet({ lot, onClose }: { lot: LotView; onClose: () => vo
                 Apagar
               </button>
             )}
+            </span>
           </li>
         ))}
       </ul>
-      <p className="k m-0 text-xs">Apagar uma mudança de piquete leva a saída e a entrada juntas. Nada some de vez: dá para desfazer abaixo.</p>
+      <p className="k m-0 text-xs">Apagar ou corrigir a data de uma mudança de piquete leva a saída e a entrada juntas. Nada some de vez: o registro antigo fica em Apagados.</p>
 
       {deleted.length ? (
         <details>

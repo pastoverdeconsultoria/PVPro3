@@ -1,4 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
+import { FarmSettings } from '../components/FarmSettings';
 import { Icon } from '../components/Icon';
 import { useApp } from '../state/AppContext';
 
@@ -75,6 +76,8 @@ export function Fazendas() {
           </Link>
         </section>
       )}
+
+      <FarmSettings />
 
       <section className="card flex flex-wrap items-center justify-between gap-3" aria-label="Conta">
         <span className="flex min-w-0 flex-col">

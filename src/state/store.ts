@@ -5,6 +5,7 @@ import {
   type Auth,
   type Farm,
   type FarmData,
+  type FarmMember,
   type Lot,
   type Module,
   type NewFarm,
@@ -14,9 +15,10 @@ import {
   type ReportPatch,
   type User,
 } from '../data/types';
+import { climateCache, type ClimateApi, type ClimateSeries } from '../lib/climate/openMeteo';
 import { checkComposition } from '../lib/farm/modules';
 import { checkChange, planMove, planRemoval, planRestore, type Result } from '../lib/lots/changes';
-import { formatBr, isIsoDate, todayLocal, type IsoDate } from '../lib/lots/dates';
+import { addDays, formatBr, isIsoDate, todayLocal, type IsoDate } from '../lib/lots/dates';
 import { deriveLot } from '../lib/lots/deriveLot';
 import type { LotEvent } from '../lib/lots/types';
 
@@ -47,6 +49,17 @@ export interface AppState {
   loadError: string | null;
   /** Quando os dados na tela vêm da cópia do aparelho: data e hora em que foi salva. */
   staleSince: string | null;
+
+  /** Clima do centroide da fazenda aberta (Open-Meteo). Null enquanto não foi buscado. */
+  climate: ClimateSeries | null;
+  climateState: 'idle' | 'loading' | 'ready' | 'error';
+  climateError: string | null;
+  /** O clima na tela é a cópia do aparelho, porque a busca falhou. */
+  climateStale: boolean;
+  /** Na projeção, usar o M calibrado (quando existe) em vez do de referência. */
+  useCalibratedM: boolean;
+  /** Quem tem acesso à fazenda aberta. Null enquanto não foi lido. */
+  members: FarmMember[] | null;
 
   init(): Promise<void>;
   signIn(email: string, password: string): Promise<Result<void>>;
@@ -82,6 +95,16 @@ export interface AppState {
   addRain(input: { date: IsoDate; mm: number; note?: string }, mode: RainMode): Promise<Result<void>>;
   removeRain(rainId: string): Promise<Result<void>>;
   rotateShareToken(): Promise<Result<void>>;
+
+  /** Busca o clima do centroide. Usa a cópia do aparelho se ela é de hoje e tem menos de 6 h. */
+  loadClimate(force?: boolean): Promise<void>;
+  setUseCalibratedM(value: boolean): void;
+  addFertilization(input: { paddockId: string; date: IsoDate; nKgHa: number; note?: string }): Promise<Result<void>>;
+  removeFertilization(fertilizationId: string): Promise<Result<void>>;
+  renameFarm(input: { name: string; municipality: string }): Promise<Result<void>>;
+  loadMembers(): Promise<Result<void>>;
+  addMember(email: string): Promise<Result<void>>;
+  removeMember(userId: string): Promise<Result<void>>;
 }
 
 export type RainMode = 'somar' | 'substituir';
@@ -89,6 +112,8 @@ export type RainMode = 'somar' | 'substituir';
 export interface StoreDeps {
   repo: Repo;
   auth: Auth;
+  /** Fonte de clima. Sem ela, as telas de clima e projeção avisam que não há dado. */
+  climate?: ClimateApi;
   /** Relógio, trocável nos testes. */
   now?: () => Date;
 }
@@ -99,7 +124,11 @@ const message = (e: unknown, fallback: string) => (e instanceof RepoError ? e.me
 
 export type AppStore = StoreApi<AppState>;
 
-export function createAppStore({ repo, auth, now = () => new Date() }: StoreDeps): AppStore {
+/** A cópia do clima vale por 6 horas dentro do mesmo dia. */
+const CLIMATE_MAX_AGE_MS = 6 * 3600_000;
+const NO_CLIMATE = { climate: null, climateState: 'idle' as const, climateError: null, climateStale: false, members: null };
+
+export function createAppStore({ repo, auth, climate: climateApi, now = () => new Date() }: StoreDeps): AppStore {
   const today = () => todayLocal(now());
 
   return createStore<AppState>()((set, get) => {
@@ -166,10 +195,10 @@ export function createAppStore({ repo, auth, now = () => new Date() }: StoreDeps
     const applyUser = async (user: User | null) => {
       if (user?.id === get().user?.id && get().phase !== 'starting') return;
       if (!user) {
-        set({ phase: 'signedOut', user: null, farms: [], farmsReady: false, farmId: null, data: null, loadError: null, staleSince: null });
+        set({ phase: 'signedOut', user: null, farms: [], farmsReady: false, farmId: null, data: null, loadError: null, staleSince: null, ...NO_CLIMATE });
         return;
       }
-      set({ phase: 'signedIn', user, farms: [], farmsReady: false, farmId: null, data: null, loadError: null, staleSince: null });
+      set({ phase: 'signedIn', user, farms: [], farmsReady: false, farmId: null, data: null, loadError: null, staleSince: null, ...NO_CLIMATE });
       await get().loadFarms();
     };
 
@@ -183,6 +212,8 @@ export function createAppStore({ repo, auth, now = () => new Date() }: StoreDeps
       loading: false,
       loadError: null,
       staleSince: null,
+      ...NO_CLIMATE,
+      useCalibratedM: true,
 
       async init() {
         auth.onChange((u) => void applyUser(u));
@@ -244,7 +275,7 @@ export function createAppStore({ repo, auth, now = () => new Date() }: StoreDeps
       async openFarm(farmId) {
         const user = get().user;
         if (!user) return;
-        set({ farmId, data: null, loading: true, loadError: null, staleSince: null });
+        set({ farmId, data: null, loading: true, loadError: null, staleSince: null, ...NO_CLIMATE });
         cache.saveLastFarm(user.id, farmId);
         try {
           const data = await repo.loadFarm(farmId);
@@ -263,7 +294,7 @@ export function createAppStore({ repo, auth, now = () => new Date() }: StoreDeps
       closeFarm() {
         const user = get().user;
         if (user) cache.saveLastFarm(user.id, null);
-        set({ farmId: null, data: null, loadError: null, staleSince: null });
+        set({ farmId: null, data: null, loadError: null, staleSince: null, ...NO_CLIMATE });
       },
 
       async refresh() {
@@ -606,6 +637,106 @@ export function createAppStore({ repo, auth, now = () => new Date() }: StoreDeps
         } catch (e) {
           return fail(message(e, 'Não deu para trocar o link.'));
         }
+      },
+
+      async loadClimate(force = false) {
+        const data = get().data;
+        const farmId = get().farmId;
+        const c = data?.farm.centroid;
+        if (!data || !c) {
+          set({ climateState: 'error', climateError: 'Esta fazenda não tem centroide: sem ele não há como buscar o clima.' });
+          return;
+        }
+        if (get().climateState === 'loading') return;
+        const day = today();
+        const cached = climateCache.load(c.lat, c.lon);
+        const fresh = !!cached && cached.forecastFrom === addDays(day, 1) && now().getTime() - Date.parse(cached.fetchedAt) < CLIMATE_MAX_AGE_MS;
+        if (cached && fresh && !force) {
+          set({ climate: cached, climateState: 'ready', climateError: null, climateStale: false });
+          return;
+        }
+        if (!climateApi) {
+          set(cached ? { climate: cached, climateState: 'ready', climateStale: true } : { climateState: 'error', climateError: 'Fonte de clima não configurada.' });
+          return;
+        }
+        set({ climateState: 'loading', climateError: null, ...(cached && !get().climate ? { climate: cached, climateStale: true } : {}) });
+        try {
+          const series = await climateApi.fetch(c.lat, c.lon, day);
+          if (get().farmId !== farmId) return;
+          climateCache.save(series);
+          set({ climate: series, climateState: 'ready', climateError: null, climateStale: false });
+        } catch {
+          if (get().farmId !== farmId) return;
+          // Sem sinal: fica com a cópia do aparelho, se houver, e avisa.
+          if (cached) set({ climate: cached, climateState: 'ready', climateStale: true });
+          else set({ climateState: 'error', climateError: 'Não deu para buscar o clima. Confira o sinal e tente de novo.' });
+        }
+      },
+
+      setUseCalibratedM(value) {
+        set({ useCalibratedM: value });
+      },
+
+      async addFertilization(input) {
+        const data = get().data;
+        if (!data) return fail('Nenhuma fazenda aberta.');
+        if (!data.paddocks.some((p) => p.id === input.paddockId)) return fail('Escolha o piquete.');
+        if (!isIsoDate(input.date)) return fail('Informe a data.');
+        if (input.date > today()) return fail('A data não pode ser depois de hoje.');
+        if (!(input.nKgHa > 0) || input.nKgHa > 500) return fail('Informe a dose de N, de 1 a 500 kg por hectare.');
+        const fert = { id: crypto.randomUUID(), paddockId: input.paddockId, date: input.date, nKgHa: input.nKgHa, note: input.note?.trim() || null };
+        const r = await attempt('registrar a adubação', () => repo.recordFertilization(data.farm.id, fert));
+        if (r.ok) patchData((d) => ({ ...d, fertilizations: [...d.fertilizations, fert] }));
+        return r;
+      },
+
+      async removeFertilization(fertilizationId) {
+        const r = await attempt('apagar a adubação', () => repo.setFertilizationDeleted(fertilizationId, now().toISOString()));
+        if (r.ok) patchData((d) => ({ ...d, fertilizations: d.fertilizations.filter((f) => f.id !== fertilizationId) }));
+        return r;
+      },
+
+      async renameFarm(input) {
+        const data = get().data;
+        if (!data) return fail('Nenhuma fazenda aberta.');
+        const patch = { name: input.name.trim(), municipality: input.municipality.trim() || null };
+        if (!patch.name) return fail('A fazenda precisa de nome.');
+        const r = await attempt('alterar a fazenda', () => repo.renameFarm(data.farm.id, patch));
+        if (r.ok) {
+          patchData((d) => ({ ...d, farm: { ...d.farm, ...patch } }));
+          set({ farms: get().farms.map((f) => (f.id === data.farm.id ? { ...f, ...patch } : f)) });
+        }
+        return r;
+      },
+
+      async loadMembers() {
+        const farmId = get().farmId;
+        if (!farmId) return fail('Nenhuma fazenda aberta.');
+        try {
+          const members = await repo.listMembers(farmId);
+          if (get().farmId === farmId) set({ members });
+          return OK;
+        } catch (e) {
+          return fail(message(e, 'Não deu para ler quem tem acesso.'));
+        }
+      },
+
+      async addMember(email) {
+        const farmId = get().farmId;
+        if (!farmId) return fail('Nenhuma fazenda aberta.');
+        const clean = email.trim();
+        if (!/^\S+@\S+\.\S+$/.test(clean)) return fail('Informe o e-mail da conta.');
+        const r = await attempt('dar acesso', () => repo.addMember(farmId, clean));
+        if (r.ok) await get().loadMembers();
+        return r;
+      },
+
+      async removeMember(userId) {
+        const farmId = get().farmId;
+        if (!farmId) return fail('Nenhuma fazenda aberta.');
+        const r = await attempt('tirar o acesso', () => repo.removeMember(farmId, userId));
+        if (r.ok) await get().loadMembers();
+        return r;
       },
     };
   });

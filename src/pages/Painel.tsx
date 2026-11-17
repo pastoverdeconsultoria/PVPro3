@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { MoveSheet } from '../components/LotSheets';
@@ -6,15 +6,26 @@ import { differs, locationText } from '../lib/farm/farmView';
 import type { ModuleView } from '../lib/farm/modules';
 import { gmdText, nf } from '../lib/format';
 import { formatDayMonth } from '../lib/lots/dates';
-import { useApp, useFarmView } from '../state/AppContext';
+import { projectScope } from '../lib/calc/projection';
+import { useApp, useClimateModel, useFarmView } from '../state/AppContext';
 
 export function Painel() {
   const fv = useFarmView();
   const [moving, setMoving] = useState<string | null>(null);
   const newReports = useApp((s) => s.data?.reports.reduce((n, r) => n + (r.status === 'novo' ? 1 : 0), 0) ?? 0);
+  const cm = useClimateModel();
+  const loadClimate = useApp((s) => s.loadClimate);
+  // O clima vem da cópia do aparelho quando é de hoje; só busca na rede se estiver velho.
+  useEffect(() => {
+    void loadClimate();
+  }, [loadClimate]);
   if (!fv) return null;
 
   const { view, modules } = fv;
+  // Alerta quando a lotação de pasto de hoje passa 5% da capacidade projetada do mês (cenário normal).
+  const farmProjection = cm ? projectScope(cm.model, 'farm') : null;
+  const capacityNow = farmProjection?.capacity[1].get(0) ?? 0;
+  const overCapacity = farmProjection && capacityNow > 0 && farmProjection.current > capacityNow * 1.05 ? farmProjection.current / capacityNow - 1 : null;
   const t = view.totals;
   const withAnimals = view.lots.filter((l) => l.heads > 0);
   const problems = view.lots.filter((l) => l.problem);
@@ -93,6 +104,18 @@ export function Painel() {
         </span>
         <Icon name="arrow" />
       </Link>
+
+      {overCapacity != null && farmProjection ? (
+        <Link to="/analise" aria-label="Lotação acima da capacidade projetada" className="card flex items-center justify-between gap-3 border-warn !py-3.5 text-text no-underline">
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="font-display text-[17px] font-semibold text-warn">Lotação {nf(overCapacity * 100, 0)}% acima da capacidade do mês</span>
+            <span className="text-[13px] text-muted">
+              Pasto hoje: {nf(farmProjection.current, 2)} UA/ha. Projeção para o mês: {nf(capacityNow, 2)} UA/ha. Hipótese ainda não validada; veja em Análise → Projeção.
+            </span>
+          </span>
+          <Icon name="arrow" />
+        </Link>
+      ) : null}
 
       {problems.length || outside.length ? (
         <section className="card flex flex-col gap-2 border-warn/60" aria-label="Avisos">

@@ -1,4 +1,5 @@
 import { createMemoryBackend } from './memoryRepo';
+import { fakeClimateApi } from '../test/climateFixture';
 import { exampleNewFarm } from '../test/fixtures';
 import { todayLocal } from '../lib/lots/dates';
 import { createAppStore } from '../state/store';
@@ -11,7 +12,7 @@ import { createAppStore } from '../state/store';
 export async function demoBackend() {
   const be = createMemoryBackend();
   await be.signInAs('demo@exemplo.test');
-  const store = createAppStore({ repo: be.repo, auth: be.auth });
+  const store = createAppStore({ repo: be.repo, auth: be.auth, climate: fakeClimateApi() });
   await store.getState().init();
   const farm = exampleNewFarm();
   await store.getState().createFarm(farm);
@@ -66,6 +67,7 @@ export async function demoBackend() {
   await s().addRain({ date: day(6), mm: 22 }, 'somar');
   await s().addRain({ date: day(9), mm: 0 }, 'somar');
   await s().refreshReports();
+  for (const name of ['P05', 'P06', 'P07', 'P08']) await s().addFertilization({ paddockId: pid(name), date: day(13), nKgHa: 40 });
   console.info('Demonstração: link do caderno em', `${window.location.origin}/c/${token}?demo`);
   return { store, notebook: be.notebook };
 }

@@ -9,6 +9,7 @@ import { App } from './App';
 import { supabaseConfig } from './data/env';
 import { createSupabaseAuth, createSupabaseClient, createSupabaseNotebook, createSupabaseRepo } from './data/supabaseRepo';
 import type { NotebookApi } from './data/types';
+import { createOpenMeteoApi } from './lib/climate/openMeteo';
 import { AppProvider } from './state/AppContext';
 import { createAppStore, type AppStore } from './state/store';
 
@@ -23,7 +24,7 @@ async function start(): Promise<{ store: AppStore; notebook: NotebookApi } | nul
   const config = supabaseConfig();
   if (!config) return null;
   const client = createSupabaseClient(config.url, config.key);
-  const store = createAppStore({ repo: createSupabaseRepo(client), auth: createSupabaseAuth(client) });
+  const store = createAppStore({ repo: createSupabaseRepo(client), auth: createSupabaseAuth(client), climate: createOpenMeteoApi() });
   void store.getState().init();
   return { store, notebook: createSupabaseNotebook(client) };
 }

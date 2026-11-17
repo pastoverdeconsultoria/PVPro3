@@ -124,7 +124,7 @@ describe('análise', () => {
 
     // A reserva não é pastejo e não entra no ranking.
     expect(names()).not.toContain('Reserva legal');
-    expect(screen.getByText(/Projeção de capacidade de suporte/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Projeção' })).toBeTruthy();
   });
 
   it('com módulo montado, agrupa o ranking e mostra a lotação do módulo', async () => {

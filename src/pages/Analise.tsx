@@ -5,6 +5,7 @@ import { monthLabel } from '../lib/farm/rain';
 import { nf } from '../lib/format';
 import { formatBr } from '../lib/lots/dates';
 import { useFarmView } from '../state/AppContext';
+import { Projecao } from './Projecao';
 
 /**
  * Análise: a lotação no período (anual, quando houver um ano de registro), por
@@ -12,6 +13,22 @@ import { useFarmView } from '../state/AppContext';
  * cartão do piquete no mapa mostra só a situação atual. Tela de escritório.
  */
 export default function Analise() {
+  const [tab, setTab] = useState<'historico' | 'projecao'>('historico');
+  return (
+    <div className="flex flex-col gap-4 desk:gap-5">
+      <div className="flex gap-2" role="group" aria-label="Histórico ou projeção">
+        {(['historico', 'projecao'] as const).map((t) => (
+          <button key={t} type="button" className={`chip min-h-[44px] cursor-pointer ${tab === t ? 'chip-on' : 'bg-transparent'}`} aria-pressed={tab === t} onClick={() => setTab(t)}>
+            {t === 'historico' ? 'Histórico' : 'Projeção'}
+          </button>
+        ))}
+      </div>
+      {tab === 'historico' ? <Historico /> : <Projecao />}
+    </div>
+  );
+}
+
+function Historico() {
   const fv = useFarmView();
   const [scope, setScope] = useState<'modulo' | 'fazenda'>('modulo');
   const a = useMemo(() => (fv ? analyzeFarm(fv.view) : null), [fv]);
@@ -188,10 +205,6 @@ export default function Analise() {
         </p>
       </section>
 
-      <section className="card flex flex-col gap-2" aria-label="Projeção">
-        <h2 className="h2">Projeção de capacidade de suporte</h2>
-        <p className="k m-0 max-w-[62ch]">Ainda não construída. Ela depende da chuva e da temperatura pelo centroide da fazenda, que entram na próxima etapa.</p>
-      </section>
     </div>
   );
 }

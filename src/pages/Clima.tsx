@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { EstimatedClimate } from '../components/EstimatedClimate';
 import { ErrorText, Field, useAction } from '../components/ui';
 import { monthLabel, rainByDay, rainByMonth, rainOn } from '../lib/farm/rain';
 import { nf, parseNum } from '../lib/format';
@@ -7,13 +8,12 @@ import { useApp } from '../state/AppContext';
 import type { RainMode } from '../state/store';
 
 /**
- * Chuva real registrada (pluviômetro, pelo consultor ou pelo caderno da equipe).
- * A chuva e a temperatura estimadas pelo centroide entram numa etapa seguinte.
+ * Chuva real registrada (pluviômetro, pelo consultor ou pelo caderno da equipe)
+ * e, abaixo, o clima estimado pelo centroide: previsão e chuva mês a mês.
  */
 export function Clima() {
   const rain = useApp((s) => s.data?.rain);
   const ready = useApp((s) => s.data?.notebookReady !== false);
-  const centroid = useApp((s) => s.data?.farm.centroid);
   const addRain = useApp((s) => s.addRain);
   const removeRain = useApp((s) => s.removeRain);
   const [date, setDate] = useState(todayLocal());
@@ -128,9 +128,7 @@ export function Clima() {
         </section>
       ) : null}
 
-      <p className="k m-0 text-xs">
-        Ainda não construído: chuva e temperatura estimadas pelo centroide{centroid ? ` (${nf(centroid.lat, 4)}; ${nf(centroid.lon, 4)})` : ''}, comparação com a normal e previsão.
-      </p>
+      <EstimatedClimate />
     </div>
   );
 }

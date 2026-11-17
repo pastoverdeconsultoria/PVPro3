@@ -48,6 +48,7 @@ export function CadernoPublico({ token }: { token: string }) {
   const [state, setState] = useState<NotebookState>(() => localNotebookStorage.load(token));
   const [invalid, setInvalid] = useState(false);
   const [checked, setChecked] = useState(false);
+  const [notReady, setNotReady] = useState(false);
   const stateRef = useRef(state);
   const running = useRef<Promise<void> | null>(null);
   const again = useRef(false);
@@ -83,8 +84,11 @@ export function CadernoPublico({ token }: { token: string }) {
           const stale = Date.now() - contextAt.current > CONTEXT_MAX_AGE_MS;
           if (wantContext || delivered || stale || !stateRef.current.context) {
             const ctx = await refreshContext(stateRef.current, api, token);
+            setNotReady(!!ctx.notReady);
             if (ctx.invalid) setInvalid(true);
-            else if (!ctx.offline) {
+            else if (ctx.notReady) {
+              /* o banco ainda não tem o caderno */
+            } else if (!ctx.offline) {
               setInvalid(false);
               contextAt.current = Date.now();
               commit({ ...stateRef.current, context: ctx.state.context });
@@ -209,7 +213,9 @@ export function CadernoPublico({ token }: { token: string }) {
   if (!ctx) {
     return (
       <Frame farm="" online={online} pending={pending}>
-        {checked ? (
+        {notReady ? (
+          <Message emoji="🛠️" title="Caderno ainda não ligado" text="Avise o responsável: falta ligar o caderno no sistema." />
+        ) : checked ? (
           <Message emoji="📵" title="Sem sinal" text="Abra esta página uma vez com internet. Depois ela funciona sem sinal." />
         ) : (
           <p className="k m-0 py-16 text-center text-lg" role="status">

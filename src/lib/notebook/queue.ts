@@ -97,12 +97,14 @@ export async function refreshContext(
   state: NotebookState,
   api: NotebookApi,
   token: string,
-): Promise<{ state: NotebookState; invalid: boolean; offline: boolean }> {
+): Promise<{ state: NotebookState; invalid: boolean; offline: boolean; /** O banco ainda não tem o caderno (falta rodar a migração). */ notReady?: boolean }> {
   try {
     const context = await api.context(token);
     if (!context) return { state, invalid: true, offline: false };
     return { state: { ...state, context }, invalid: false, offline: false };
-  } catch {
+  } catch (e) {
+    // Função ausente no banco não é falta de sinal: o caderno ainda não foi ligado.
+    if (e instanceof RepoError && e.schemaMissing) return { state, invalid: false, offline: false, notReady: true };
     return { state, invalid: false, offline: true };
   }
 }

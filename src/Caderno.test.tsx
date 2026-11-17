@@ -175,6 +175,13 @@ describe('link do vaqueiro', () => {
     expect(await screen.findByText(/Abra esta página uma vez com internet/)).toBeTruthy();
   });
 
+  it('banco sem o caderno ligado não é confundido com falta de sinal', async () => {
+    be.setNotebookMissing(true);
+    open(`/c/${token}`);
+    expect(await screen.findByText('Caderno ainda não ligado')).toBeTruthy();
+    expect(screen.queryByText('Sem sinal')).toBeNull();
+  });
+
   it('não deixa enviar data futura, e avisa quando o servidor não aceita o relato', async () => {
     const user = userEvent.setup();
     open(`/c/${token}`);

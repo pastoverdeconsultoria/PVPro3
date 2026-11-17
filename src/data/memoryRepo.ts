@@ -45,6 +45,7 @@ export function createMemoryBackend() {
   let seq = 0;
   let user: User | null = null;
   let offline = false;
+  let notebookMissing = false;
   const calls: string[] = [];
 
   const online = (name: string) => {
@@ -304,6 +305,7 @@ export function createMemoryBackend() {
   const notebook: NotebookApi = {
     async context(token) {
       calls.push('notebook.context');
+      if (notebookMissing) throw new RepoError('O banco ainda não foi preparado.', false, true);
       if (offline) throw new RepoError(OFFLINE_MESSAGE, true);
       const f = farmByToken(token);
       if (!f) return null;
@@ -398,6 +400,10 @@ export function createMemoryBackend() {
     calls,
     setOffline(value: boolean) {
       offline = value;
+    },
+    /** Simula o banco sem a migração do caderno. */
+    setNotebookMissing(value: boolean) {
+      notebookMissing = value;
     },
     /** Entra direto com uma conta nova, sem passar pela tela. */
     async signInAs(email: string) {

@@ -258,6 +258,26 @@ Feito depois, em 17 nov 2026, sem depender de SQL: zoom e arrasto no mapa (`Farm
 
 Ainda não existe: reimportar KML ou redesenhar piquete e excluir fazenda (precisam de permissão nova no banco), corrigir outro campo de um registro além da data, e satélite no mapa.
 
+### Revisão de segurança (17 nov 2026)
+
+Feita pelo Claude a pedido do Lucas, lendo o SQL e o código. Corrigido no código:
+
+- Cabeçalhos no : política de conteúdo (só roda script do próprio site; só conversa com o Supabase e o Open-Meteo),  (o endereço do caderno tem o token), sem indexação em busca, sem moldura em outro site, e só o GPS liberado. Qualquer serviço novo que o app chame precisa entrar no , senão o navegador bloqueia.
+- Limite de tamanho no arquivo de mapa (25 MB, e 60 MB descompactado) e de 2.000 polígonos.
+
+Conferido e sem achado: nenhuma tabela tem acesso de anônimo nem DELETE; toda função com privilégio elevado fixa o  e confere vínculo ou token; o app não usa HTML cru nem ; a chave publicada é a pública.
+
+Riscos que dependem de configuração do Lucas no Supabase, não de código:
+
+- **Confirmação de e-mail desligada.** Com ela desligada, qualquer pessoa cria conta com o e-mail de outra. Se o dono der acesso a esse e-mail, quem criou a conta falsa entra na fazenda. Religar "Confirm email" antes de usar "Dar acesso" com gente de fora.
+- Criação de conta aberta a qualquer um. Conta sem vínculo não enxerga nada, mas dá para fechar em Authentication depois de criar as contas necessárias.
+- Senha mínima de 6 caracteres (padrão do Supabase). Subir o mínimo e ligar a proteção contra senha vazada.
+- Plano gratuito: sem backup e pausa por inatividade.
+
+Limites conhecidos, aceitos por ora: o link do caderno é o segredo (quem tem o link vê nomes de piquetes e lotes, cabeças e o contorno simplificado, e pode mandar até 500 relatos); o servidor não refaz as regras do histórico do lote (confia na conferência do app, que roda antes de gravar); a sessão fica no armazenamento do navegador, como em todo app Supabase.
+
+Ideias incluídas sem pedido, que o Lucas pode tirar: aviso de pesagem com mais de 45 dias no Painel; limpeza do nome do piquete que traz a área junto; criar módulo já com o grupo de piquetes da mesma pasta ou letra; GPS no mapa e no caderno.
+
 O KML real usado para testar a importação fica fora do repositório, por decisão do Lucas. Nenhum nome de fazenda real entra no repositório, que é público.
 
 ## Achados da revisão do simulador (Claude, 15 nov 2026, não decididos)

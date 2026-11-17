@@ -5,9 +5,15 @@ import { KmlError, parseKml, type KmlImport } from './parseKml';
  * Lê os bytes de um arquivo .kml ou .kmz. O tipo é decidido pelo conteúdo, não pela
  * extensão: KMZ é um zip e começa com "PK". Na tela: `readKml(await file.arrayBuffer())`.
  */
+/** Maior arquivo aceito. Um mapa de fazenda tem poucos MB; acima disso é engano ou arquivo malicioso. */
+export const MAX_FILE_BYTES = 25 * 1024 * 1024;
+/** Maior KML aceito depois de descompactar um KMZ (um zip pequeno pode esconder um arquivo gigante). */
+export const MAX_KML_BYTES = 60 * 1024 * 1024;
+
 export async function readKml(data: ArrayBuffer | Uint8Array): Promise<KmlImport> {
   const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
   if (!bytes.length) throw new KmlError('O arquivo está vazio.');
+  if (bytes.length > MAX_FILE_BYTES) throw new KmlError('Arquivo grande demais (mais de 25 MB). Exporte só os piquetes da fazenda.');
   const text = isZip(bytes) ? await kmlTextFromKmz(bytes) : decodeText(bytes);
   return parseKml(text);
 }
@@ -43,5 +49,10 @@ async function kmlTextFromKmz(bytes: Uint8Array): Promise<string> {
       depth(a.name) - depth(b.name) ||
       a.name.localeCompare(b.name),
   );
-  return decodeText(await candidates[0].async('uint8array'));
+  // O tamanho descompactado vem do índice do zip: dá para recusar antes de abrir.
+  const declared = (candidates[0] as unknown as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize;
+  if (typeof declared === 'number' && declared > MAX_KML_BYTES) throw new KmlError('O mapa dentro do KMZ é grande demais.');
+  const kml = await candidates[0].async('uint8array');
+  if (kml.length > MAX_KML_BYTES) throw new KmlError('O mapa dentro do KMZ é grande demais.');
+  return decodeText(kml);
 }

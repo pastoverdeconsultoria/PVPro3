@@ -163,6 +163,9 @@ export function parseKml(text: string): KmlImport {
     });
   }
 
+  // O banco aceita até 2.000 piquetes por fazenda; avisar aqui é melhor que falhar na gravação.
+  if (paddocks.length > 2000) throw new KmlError(`O arquivo tem ${paddocks.length} polígonos. O limite é 2.000 por fazenda.`);
+
   if (!paddocks.length) {
     throw new KmlError(
       ignored.lines

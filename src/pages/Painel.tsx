@@ -5,9 +5,12 @@ import { MoveSheet } from '../components/LotSheets';
 import { differs, locationText } from '../lib/farm/farmView';
 import { moveQueue, whenText, type ModuleView } from '../lib/farm/modules';
 import { gmdText, nf } from '../lib/format';
-import { formatDayMonth } from '../lib/lots/dates';
+import { diffDays, formatDayMonth } from '../lib/lots/dates';
 import { projectScope } from '../lib/calc/projection';
 import { useApp, useClimateModel, useFarmView } from '../state/AppContext';
+
+/** Dias sem pesagem a partir dos quais o painel avisa. */
+const STALE_WEIGH_DAYS = 45;
 
 export function Painel() {
   const fv = useFarmView();
@@ -31,6 +34,8 @@ export function Painel() {
   const queue = moveQueue(modules);
   const problems = view.lots.filter((l) => l.problem);
   const outside = withAnimals.filter((l) => l.location.kind !== 'no_piquete');
+  // O peso fica parado entre pesagens, e a UA junto. Depois de 45 dias a lotação de quem ganha peso já sai subestimada.
+  const staleWeight = withAnimals.filter((l) => !l.lastWeigh || diffDays(l.lastWeigh, view.today) > STALE_WEIGH_DAYS);
   const noHistory = view.paddocks.filter((p) => p.paddock.isGrazing && !p.occupants.length && p.restDays == null).length;
 
   const tiles = [
@@ -118,12 +123,17 @@ export function Painel() {
         </Link>
       ) : null}
 
-      {problems.length || outside.length ? (
+      {problems.length || outside.length || staleWeight.length ? (
         <section className="card flex flex-col gap-2 border-warn/60" aria-label="Avisos">
           <h2 className="h2 text-warn">Avisos</h2>
           <ul className="m-0 flex list-none flex-col gap-1.5 p-0 text-sm">
             {problems.map((l) => (
               <li key={`p-${l.lot.id}`}>{l.problem}</li>
+            ))}
+            {staleWeight.map((l) => (
+              <li key={`w-${l.lot.id}`}>
+                <b>{l.lot.name}</b> {l.lastWeigh ? `foi pesado há ${diffDays(l.lastWeigh, view.today)} dias` : 'nunca foi pesado (vale o peso do cadastro)'}: a UA dele pode estar desatualizada.
+              </li>
             ))}
             {outside.map((l) => (
               <li key={`o-${l.lot.id}`}>

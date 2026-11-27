@@ -258,6 +258,16 @@ Feito depois, em 17 nov 2026, sem depender de SQL: zoom e arrasto no mapa (`Farm
 
 Ainda não existe: reimportar KML ou redesenhar piquete e excluir fazenda (precisam de permissão nova no banco), corrigir outro campo de um registro além da data, e satélite no mapa.
 
+### Abrir sem sinal (27 nov 2026)
+
+Bug real: o app não abria sem sinal. O Supabase dá validade de 1 h ao login; vencido, o `getSession` tenta renovar pela rede, insiste ~25 s e devolve "sem sessão", e o app caía na tela Entrar com a fazenda salva no aparelho. Em campo quase sempre passou mais de 1 h desde a última abertura. O Lucas autorizou a correção com "Atualizar código ok".
+
+- **Quem entrou fica lembrado** (`pvpro3:lastUser`, só id e e-mail; na falta, o usuário da sessão vencida que o Supabase deixou no aparelho). `currentUser` espera a sessão no máximo `SESSION_WAIT_MS` (2,5 s) e segue com essa identidade. Só o Sair ou o evento `SIGNED_OUT` (servidor recusou a sessão de verdade) esquecem; `INITIAL_SESSION` vazio por falta de rede é ignorado.
+- **Cópia do aparelho primeiro**: `loadFarms` e `openFarm` põem a cópia na tela antes de qualquer rede; o servidor troca por cima quando responde. Recusa do servidor (não falta de sinal) tira a cópia da tela; fazenda que saiu da lista é fechada.
+- **Nada fala com o servidor sem sessão válida** (`auth.hasSession`, `requireSession` no store): com o token vencido o Supabase responde como anônimo, a leitura volta VAZIA (trocaria a cópia boa por nada) e a gravação é recusada (a fila desfaria o registro do campo). Sem sessão conta como sem sinal.
+- **Sessão renovou ou o sinal voltou → `resync`**: envia a fila e relê a fazenda se a tela está na cópia. Dispara no evento de sessão renovada, no `online`, ao voltar para a frente e a cada 2 min.
+- Testes: `src/data/sessao.test.ts` e `src/state/abrirSemSinal.test.ts`. Conferido no navegador sem rede com token vencido: antes 28 s e tela Entrar; agora o Painel da fazenda em ~2,6 s.
+
 ### Revisão de segurança (17 nov 2026)
 
 Feita pelo Claude a pedido do Lucas, lendo o SQL e o código. Corrigido no código:

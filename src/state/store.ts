@@ -1,6 +1,7 @@
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { cache } from '../data/cache';
 import {
+  OFFLINE_MESSAGE,
   RepoError,
   type Auth,
   type Farm,
@@ -135,6 +136,8 @@ export interface AppState {
   cancelInvite(inviteId: string): Promise<Result<void>>;
   /** Envia o que ficou guardado sem sinal. Chamado ao abrir, quando o sinal volta e de tempos em tempos. */
   flushOutbox(): Promise<void>;
+  /** Sinal de volta: envia a fila e, se a tela mostra a cópia salva, lê a fazenda de novo. */
+  resync(): Promise<void>;
   dismissOutboxError(): void;
 }
 
@@ -190,6 +193,16 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
       const next = fn(data);
       set({ data: next });
       if (user) cache.saveFarm(user.id, next);
+    };
+
+    /**
+     * Sem sessão válida (token vencido que ainda não renovou) o Supabase responde
+     * como anônimo: leitura volta VAZIA e gravação é recusada. Tratar como sem
+     * sinal, para não trocar a cópia boa por lista vazia nem desfazer o que foi
+     * feito no campo.
+     */
+    const requireSession = async () => {
+      if (!(await auth.hasSession())) throw new RepoError(OFFLINE_MESSAGE, true);
     };
 
     /** Roda uma gravação e devolve o erro em texto, sem deixar exceção escapar para a tela. */
@@ -271,6 +284,7 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
 
     /** Manda um registro ao servidor e põe na tela o que ele devolveu (com `seq`). */
     const sendOp = async (farmId: string, op: PendingOp) => {
+      await requireSession();
       if (op.kind === 'events') mergeEvents(await repo.recordEvents(farmId, op.events));
       else if (op.kind === 'createLot') {
         const saved = await repo.createLot(op.lot, op.events);
@@ -304,7 +318,12 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
     };
 
     const applyUser = async (user: User | null) => {
-      if (user?.id === get().user?.id && get().phase !== 'starting') return;
+      if (user?.id === get().user?.id && get().phase !== 'starting') {
+        // Mesma pessoa, sessão renovada (o app tinha aberto com a identidade guardada):
+        // é a hora de mandar o que ficou na fila e trocar a cópia pelo que está no servidor.
+        if (user) void get().resync();
+        return;
+      }
       if (!user) {
         set({ phase: 'signedOut', user: null, farms: [], farmsReady: false, canCreateFarms: null, farmId: null, data: null, loadError: null, staleSince: null, ...NO_CLIMATE });
         return;
@@ -374,47 +393,69 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
             if (get().user?.id === user.id) set({ canCreateFarms: v });
           })
           .catch(() => undefined);
+        // Reabre a última fazenda usada; com uma fazenda só, abre direto.
+        const reopen = async (farms: Farm[]) => {
+          const last = cache.loadLastFarm(user.id);
+          const pick = farms.find((f) => f.id === last) ?? (farms.length === 1 ? farms[0] : null);
+          if (pick && !get().farmId) await get().openFarm(pick.id);
+        };
+        // A cópia do aparelho entra PRIMEIRO; a rede atualiza por cima quando responder.
+        // Sem isso, com sinal fraco, a tela ficava em "Carregando…" até o servidor desistir.
+        const saved = cache.loadFarms(user.id);
+        if (saved) {
+          set({ farms: saved.value, farmsReady: true });
+          // Sem esperar: a cópia da fazenda entra na tela antes de qualquer rede.
+          void reopen(saved.value);
+        }
         let farms: Farm[];
         try {
+          await requireSession();
           farms = await repo.listFarms();
           if ((await claimed) > 0) farms = await repo.listFarms();
           cache.saveFarms(user.id, farms);
         } catch (e) {
-          const saved = e instanceof RepoError && e.offline ? cache.loadFarms(user.id) : null;
-          if (!saved) {
-            set({ loading: false, farmsReady: true, loadError: message(e, 'Não deu para ler as fazendas.') });
+          if (get().user?.id !== user.id) return;
+          if (saved && e instanceof RepoError && e.offline) {
+            set({ loading: false });
             return;
           }
-          farms = saved.value;
+          set({ loading: false, farmsReady: true, loadError: message(e, 'Não deu para ler as fazendas.') });
+          return;
         }
         if (get().user?.id !== user.id) return;
         set({ farms, farmsReady: true, loading: false });
-
-        // Reabre a última fazenda usada; com uma fazenda só, abre direto.
-        const last = cache.loadLastFarm(user.id);
-        const pick = farms.find((f) => f.id === last) ?? (farms.length === 1 ? farms[0] : null);
-        if (pick && !get().farmId) await get().openFarm(pick.id);
+        // A fazenda aberta pela cópia saiu da lista (acesso retirado): fecha.
+        const open = get().farmId;
+        if (open && !farms.some((f) => f.id === open)) get().closeFarm();
+        await reopen(farms);
       },
 
       async openFarm(farmId) {
         const user = get().user;
         if (!user) return;
         const outbox = cache.loadOutbox(user.id, farmId);
-        set({ farmId, data: null, loading: true, loadError: null, staleSince: null, ...NO_CLIMATE, outbox });
+        // A cópia do aparelho aparece na hora (com o que ficou na fila por cima);
+        // a leitura do servidor troca por cima quando chegar.
+        const saved = cache.loadFarm(user.id, farmId);
+        // Cópia gravada por versão antiga do app pode não ter caderno nem chuva.
+        const fromCache = saved
+          ? outbox.reduce(applyOp, { ...saved.value, reports: saved.value.reports ?? [], rain: saved.value.rain ?? [], fertilizations: saved.value.fertilizations ?? [] })
+          : null;
+        set({ farmId, data: fromCache, loading: true, loadError: null, staleSince: saved ? saved.savedAt : null, ...NO_CLIMATE, outbox });
         cache.saveLastFarm(user.id, farmId);
         try {
+          await requireSession();
           // O que foi feito sem sinal e ainda não chegou ao servidor continua na tela.
           const data = outbox.reduce(applyOp, await repo.loadFarm(farmId));
           if (get().farmId !== farmId) return;
-          set({ data, loading: false });
+          set({ data, loading: false, staleSince: null });
           cache.saveFarm(user.id, data);
           if (outbox.length) void get().flushOutbox();
         } catch (e) {
           if (get().farmId !== farmId) return;
-          const saved = e instanceof RepoError && e.offline ? cache.loadFarm(user.id, farmId) : null;
-          // Cópia gravada por versão antiga do app pode não ter caderno nem chuva.
-          if (saved) set({ data: { ...saved.value, reports: saved.value.reports ?? [], rain: saved.value.rain ?? [], fertilizations: saved.value.fertilizations ?? [] }, loading: false, staleSince: saved.savedAt });
-          else set({ loading: false, loadError: message(e, 'Não deu para ler a fazenda.') });
+          // Sem sinal: fica a cópia. Recusa do servidor (ex.: acesso retirado): a cópia sai da tela.
+          if (fromCache && e instanceof RepoError && e.offline) set({ loading: false });
+          else set({ data: null, staleSince: null, loading: false, loadError: message(e, 'Não deu para ler a fazenda.') });
         }
       },
 
@@ -429,6 +470,7 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
         if (!farmId || !user) return;
         set({ loading: true, loadError: null });
         try {
+          await requireSession();
           const data = get().outbox.reduce(applyOp, await repo.loadFarm(farmId));
           if (get().farmId !== farmId) return;
           set({ data, loading: false, staleSince: null });
@@ -714,6 +756,7 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
         const farmId = get().farmId;
         if (!farmId || !get().data || get().data?.notebookReady === false) return;
         try {
+          await requireSession();
           const reports = await repo.listReports(farmId);
           if (get().farmId === farmId) patchData((d) => ({ ...d, reports }));
         } catch {
@@ -860,6 +903,13 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
           flushing = null;
         });
         return flushing;
+      },
+
+      async resync() {
+        if (!get().farmId || !get().data) return;
+        await get().flushOutbox();
+        // A fila, quando envia algo, já relê a fazenda; senão relê aqui se a tela é cópia.
+        if (get().staleSince && !get().loading) await get().refresh();
       },
 
       dismissOutboxError() {

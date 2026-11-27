@@ -32,6 +32,7 @@ export function Shell() {
   const outbox = useApp((s) => s.outbox.length);
   const outboxError = useApp((s) => s.outboxError);
   const flushOutbox = useApp((s) => s.flushOutbox);
+  const resync = useApp((s) => s.resync);
   const dismissOutboxError = useApp((s) => s.dismissOutboxError);
   const canEdit = useCanEdit();
   const newReports = useApp((s) => (s.data?.myRole === 'viewer' ? 0 : s.data?.reports.reduce((n, r) => n + (r.status === 'novo' ? 1 : 0), 0) ?? 0));
@@ -43,8 +44,9 @@ export function Shell() {
     if (!farmId) return;
     const check = () => {
       if (document.visibilityState !== 'visible') return;
-      // Primeiro envia o que ficou guardado sem sinal; depois confere o caderno.
-      void flushOutbox().then(() => refreshReports());
+      // Primeiro envia o que ficou guardado sem sinal (e troca a cópia salva pelo
+      // servidor, se a tela estava na cópia); depois confere o caderno.
+      void resync().then(() => refreshReports());
     };
     window.addEventListener('online', check);
     document.addEventListener('visibilitychange', check);
@@ -54,7 +56,7 @@ export function Shell() {
       document.removeEventListener('visibilitychange', check);
       clearInterval(timer);
     };
-  }, [farmId, refreshReports, flushOutbox]);
+  }, [farmId, refreshReports, resync]);
 
   return (
     <>

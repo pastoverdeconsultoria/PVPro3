@@ -256,6 +256,12 @@ export interface Repo {
 
 export interface Auth {
   currentUser(): Promise<User | null>;
+  /**
+   * Há sessão válida para falar com o servidor? Sem sinal o app abre com a
+   * identidade guardada, mas a fila só é enviada com a sessão renovada: sem ela
+   * o banco recusaria e o registro feito no campo seria desfeito.
+   */
+  hasSession(): Promise<boolean>;
   onChange(listener: (user: User | null) => void): () => void;
   signIn(email: string, password: string): Promise<void>;
   /** Devolve `true` quando o Supabase exige confirmar o e-mail antes de entrar. */

@@ -53,12 +53,16 @@ export function createMemoryBackend() {
   let seq = 0;
   let user: User | null = null;
   let offline = false;
+  /** Sessão vencida que ainda não renovou (o app abriu com a identidade guardada). */
+  let sessionExpired = false;
   let notebookMissing = false;
   const calls: string[] = [];
 
   const online = (name: string) => {
     calls.push(name);
     if (offline) throw new RepoError(OFFLINE_MESSAGE, true);
+    // Como o Supabase com o token vencido: a chamada sai como anônimo e é recusada.
+    if (sessionExpired) throw new RepoError('Sua conta não tem permissão para gravar isso nesta fazenda.');
   };
   const uid = () => {
     if (!user) throw new RepoError('Entre na conta.');
@@ -449,6 +453,7 @@ export function createMemoryBackend() {
 
   const auth: Auth = {
     currentUser: async () => user,
+    hasSession: async () => !!user && !sessionExpired,
     onChange(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -497,6 +502,10 @@ export function createMemoryBackend() {
     calls,
     setOffline(value: boolean) {
       offline = value;
+    },
+    /** Simula o token vencido sem renovar: o app segue aberto, mas o servidor recusaria. */
+    setSessionExpired(value: boolean) {
+      sessionExpired = value;
     },
     /** Simula o banco sem a migração do caderno. */
     setNotebookMissing(value: boolean) {

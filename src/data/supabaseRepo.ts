@@ -424,16 +424,102 @@ export function createSupabaseNotebook(client: SupabaseClient): NotebookApi {
   };
 }
 
+/** Quanto a abertura espera pela sessão antes de seguir com a identidade guardada. */
+export const SESSION_WAIT_MS = 2500;
+
+/** Último usuário que entrou neste aparelho: só id e e-mail, nunca token. */
+export const LAST_USER_KEY = 'pvpro3:lastUser';
+const lastUser = {
+  load(): User | null {
+    try {
+      const raw = localStorage.getItem(LAST_USER_KEY);
+      const u = raw ? (JSON.parse(raw) as Partial<User>) : null;
+      if (u && typeof u.id === 'string') return { id: u.id, email: String(u.email ?? '') };
+      // Primeira abertura desta versão já sem sinal: a sessão vencida que o
+      // Supabase deixou no aparelho ainda diz quem é. Ele só a apaga quando o
+      // servidor recusa de verdade ou a pessoa sai.
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k || !/^sb-.+-auth-token$/.test(k)) continue;
+        const user = (JSON.parse(localStorage.getItem(k) ?? 'null') as { user?: Partial<User> } | null)?.user;
+        if (user && typeof user.id === 'string') return { id: user.id, email: String(user.email ?? '') };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  },
+  save(user: User) {
+    try {
+      localStorage.setItem(LAST_USER_KEY, JSON.stringify({ id: user.id, email: user.email }));
+    } catch {
+      /* sem espaço: segue sem lembrar */
+    }
+  },
+  clear() {
+    try {
+      localStorage.removeItem(LAST_USER_KEY);
+    } catch {
+      /* nada a fazer */
+    }
+  },
+};
+
 export function createSupabaseAuth(client: SupabaseClient): Auth {
   const toUser = (u: { id: string; email?: string | null } | null | undefined): User | null =>
     u ? { id: u.id, email: u.email ?? '' } : null;
 
   return {
-    // `getSession` lê do aparelho, sem rede: quem já entrou continua dentro sem sinal.
-    currentUser: async () => toUser((await client.auth.getSession()).data.session?.user),
+    // Sem sinal o app tem de abrir com quem entrou por último neste aparelho.
+    // O `getSession` sozinho não serve: com o token vencido (1 h sem abrir o
+    // app) ele tenta renovar pela rede, insiste por ~25 s e devolve "sem
+    // sessão" — e o app caía na tela Entrar com a fazenda salva no aparelho.
+    // Só o Sair ou uma recusa de verdade do servidor (SIGNED_OUT) esquecem
+    // quem entrou.
+    currentUser: async () => {
+      const remembered = lastUser.load();
+      const read = client.auth.getSession().then(
+        ({ data, error }) => ({ user: toUser(data.session?.user), failed: !!error }),
+        () => ({ user: null, failed: true }),
+      );
+      const outcome = remembered
+        ? await Promise.race([read, new Promise<null>((resolve) => setTimeout(() => resolve(null), SESSION_WAIT_MS))])
+        : await read;
+      // Demorou: abre com a identidade guardada; a sessão chega depois pelo onChange.
+      if (!outcome) return remembered;
+      if (outcome.user) {
+        lastUser.save(outcome.user);
+        return outcome.user;
+      }
+      // Renovação que falhou (sem sinal) não é saída: segue com quem estava.
+      if (outcome.failed && remembered) return remembered;
+      lastUser.clear();
+      return null;
+    },
+
+    hasSession: async () => {
+      try {
+        const { data } = await client.auth.getSession();
+        const exp = data.session?.expires_at;
+        return !!data.session && (!exp || exp * 1000 > Date.now());
+      } catch {
+        return false;
+      }
+    },
 
     onChange: (listener) => {
-      const { data } = client.auth.onAuthStateChange((_event, session) => listener(toUser(session?.user)));
+      const { data } = client.auth.onAuthStateChange((event, session) => {
+        const user = toUser(session?.user);
+        if (user) {
+          lastUser.save(user);
+          listener(user);
+        } else if (event === 'SIGNED_OUT' || !lastUser.load()) {
+          // SIGNED_OUT só vem do Sair ou do servidor recusando a sessão.
+          lastUser.clear();
+          listener(null);
+        }
+        // Sessão vazia por falta de sinal (INITIAL_SESSION sem rede): ignora.
+      });
       return () => data.subscription.unsubscribe();
     },
 
@@ -463,6 +549,7 @@ export function createSupabaseAuth(client: SupabaseClient): Auth {
     },
 
     signOut: async () => {
+      lastUser.clear();
       // `local`: sai neste aparelho mesmo sem sinal.
       await client.auth.signOut({ scope: 'local' });
     },

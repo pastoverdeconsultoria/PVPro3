@@ -39,6 +39,15 @@ export interface NewLotInput {
   category: string;
   /** O peso informado veio de balança: grava também uma pesagem na data da formação. */
   weighed: boolean;
+  /** Piquete onde o lote já está: grava a entrada nele na data da formação. */
+  paddockId?: string | null;
+}
+
+/** Resultado da importação do rebanho por planilha. */
+export interface ImportLotsResult {
+  imported: number;
+  /** Linhas que o servidor ou a conferência recusaram, com o motivo. */
+  failed: { line: number; name: string; error: string }[];
 }
 
 export interface AppState {
@@ -89,6 +98,8 @@ export interface AppState {
   saveModule(module: Module, composition?: { validFrom: IsoDate; paddockIds: string[] }): Promise<Result<void>>;
   deleteModule(moduleId: string): Promise<Result<void>>;
   createLot(input: NewLotInput): Promise<Result<void>>;
+  /** Cria vários lotes, um por vez, na ordem dada. Segue adiante se um falhar. */
+  importLots(rows: (NewLotInput & { line: number })[]): Promise<ImportLotsResult>;
   moveLot(lotId: string, toPaddockId: string, date: IsoDate): Promise<Result<void>>;
   addEvent(lotId: string, draft: EventDraft): Promise<Result<void>>;
   /** Tira animais de um lote e põe em outro, num registro só (saída e entrada ligadas). */
@@ -590,6 +601,7 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
         if (!Number.isInteger(input.heads) || input.heads <= 0) return fail('Informe o número de cabeças.');
         if (!(input.weightKg > 0) || input.weightKg > 1500) return fail('Informe o peso médio em kg.');
         if (!input.category.trim()) return fail('Escolha a categoria.');
+        if (input.paddockId && !data.paddocks.some((p) => p.id === input.paddockId)) return fail('Piquete não encontrado.');
 
         const lot: Lot = { id: crypto.randomUUID(), farmId: data.farm.id, name, deletedAt: null };
         const events: LotEvent[] = [
@@ -598,7 +610,22 @@ export function createAppStore({ repo, auth, climate: climateApi, now = () => ne
         if (input.weighed) {
           events.push({ id: crypto.randomUUID(), lotId: lot.id, date: input.date, type: 'pesagem', weightKg: input.weightKg, headsWeighed: input.heads });
         }
+        if (input.paddockId) {
+          events.push({ id: crypto.randomUUID(), lotId: lot.id, date: input.date, type: 'piquete_entrada', paddockId: input.paddockId });
+        }
+        const check = checkChange(lot.id, events, name);
+        if (!check.ok) return check;
         return runOp({ id: crypto.randomUUID(), kind: 'createLot', lot, events }, 'Não deu para criar o lote.');
+      },
+
+      async importLots(rows) {
+        const result: ImportLotsResult = { imported: 0, failed: [] };
+        for (const row of rows) {
+          const r = await get().createLot(row);
+          if (r.ok) result.imported++;
+          else result.failed.push({ line: row.line, name: row.name, error: r.error });
+        }
+        return result;
       },
 
       async moveLot(lotId, toPaddockId, date) {

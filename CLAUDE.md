@@ -152,7 +152,7 @@ Escuro com verde-limão. Variáveis do simulador: fundo `#0B120E`, card `#121C16
 3. ~~Cenários de chuva da projeção são simulados.~~ Feito: saem do histórico real do centroide (ver Estado da etapa 4).
 4. Nada foi testado com fazenda real. Falta um cliente com 60 a 90 dias de movimentação e o KML dele.
 5. A versão mobile da projeção foi gerada, mas não foi inspecionada visualmente.
-6. Importação de histórico por planilha foi discutida e **descartada por ora**, porque os clientes não têm histórico. O caderno do vaqueiro é o caminho para o dado nascer.
+6. Importação de **histórico** por planilha foi discutida e **descartada por ora**, porque os clientes não têm histórico. O caderno do vaqueiro é o caminho para o dado nascer. A importação do **rebanho de hoje** por CSV existe (ver "Importar rebanho").
 7. ~~Nome do sistema indefinido.~~ Definido: PVPro3.
 8. A estação Davis de uma fazenda cliente tem só ~15 dias de dado, não serve de teste histórico.
 
@@ -308,6 +308,17 @@ Limites conhecidos, aceitos por ora: o link do caderno é o segredo (quem tem o 
 Ideias incluídas sem pedido, que o Lucas pode tirar: aviso de pesagem com mais de 45 dias no Painel; limpeza do nome do piquete que traz a área junto; criar módulo já com o grupo de piquetes da mesma pasta ou letra; GPS no mapa e no caderno.
 
 O KML real usado para testar a importação fica fora do repositório, por decisão do Lucas. Nenhum nome de fazenda real entra no repositório, que é público.
+
+### Importar rebanho por CSV (28 nov 2026)
+
+Pedido do Lucas ("rebanho aceita csv?" → sim, com modelo para baixar). Rebanho → **Importar**, só para quem edita.
+
+- Uma linha por lote: `lote; cabecas; peso_medio_kg; categoria; piquete; data; pesado_na_balanca`. Obrigatórias: lote, cabeças, categoria. Cabeçalho aceita variações ("Peso médio (kg)", "Cabeças"), sem acento e sem caixa.
+- Cada linha vira o mesmo cadastro do "Novo lote": `inicio`, `pesagem` se pesado na balança, e `piquete_entrada` na mesma data se tiver piquete (`createLot` ganhou `paddockId`). Não é importação de histórico.
+- Peso vazio usa o padrão da categoria, data vazia usa hoje, piquete vazio deixa o lote sem movimentação. Tudo isso aparece como aviso na prévia.
+- Erro numa linha (nome repetido ou já existente, piquete inexistente ou ambíguo, data futura, categoria desconhecida) tira só aquela linha. Reimportar a mesma planilha depois de corrigir pula os lotes que já entraram.
+- Lê ponto e vírgula, vírgula e tabulação, aspas, vírgula decimal, data dia/mês/ano e o CSV em Windows-1252 que o Excel em português salva. `.xlsx` recebe a instrução de salvar como CSV.
+- Código: `src/lib/lots/herdCsv.ts` (puro, com teste) e `src/components/ImportHerdSheet.tsx`.
 
 ## Achados da revisão do simulador (Claude, 15 nov 2026, não decididos)
 

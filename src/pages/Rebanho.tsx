@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { Icon } from '../components/Icon';
+import { ImportHerdSheet } from '../components/ImportHerdSheet';
 import { ChangeSheet, HistorySheet, MoveSheet, NewLotSheet, WeighSheet } from '../components/LotSheets';
 import { ErrorText, useAction } from '../components/ui';
 import { differs, locationText, type LotView } from '../lib/farm/farmView';
@@ -8,7 +9,7 @@ import { gmdText, nf } from '../lib/format';
 import { formatBr, formatDayMonth } from '../lib/lots/dates';
 import { useApp, useCanEdit, useFarmView } from '../state/AppContext';
 
-type Open = { kind: 'novo' } | { kind: 'mover' | 'pesar' | 'alterar' | 'historico'; lotId: string } | null;
+type Open = { kind: 'novo' } | { kind: 'importar' } | { kind: 'mover' | 'pesar' | 'alterar' | 'historico'; lotId: string } | null;
 
 export function Rebanho() {
   const fv = useFarmView();
@@ -23,7 +24,7 @@ export function Rebanho() {
 
   const { view } = fv;
   const t = view.totals;
-  const current = open && open.kind !== 'novo' ? view.lotById.get(open.lotId) ?? null : null;
+  const current = open && open.kind !== 'novo' && open.kind !== 'importar' ? view.lotById.get(open.lotId) ?? null : null;
   const close = () => setOpen(null);
 
   return (
@@ -37,6 +38,11 @@ export function Rebanho() {
           <Icon name="field" />
           Campo
         </Link>
+        {canEdit ? (
+          <button type="button" className="btn" onClick={() => setOpen({ kind: 'importar' })}>
+            Importar
+          </button>
+        ) : null}
         {canEdit ? (
           <button type="button" className="btn btn-pri" onClick={() => setOpen({ kind: 'novo' })}>
             <Icon name="plus" />
@@ -74,6 +80,7 @@ export function Rebanho() {
           <p className="k m-0 max-w-[62ch]">
             O lote nasce com cabeças, peso médio e categoria. Depois é só registrar as mudanças de piquete: a lotação sai delas.
           </p>
+          {canEdit ? <p className="k m-0 max-w-[62ch] text-sm">Com muitos lotes, use "Importar": uma linha por lote, já com o piquete onde está.</p> : null}
         </section>
       ) : (
         <div className="grid gap-3 desk:grid-cols-2 desk:gap-4 min-[1200px]:grid-cols-3">
@@ -101,6 +108,7 @@ export function Rebanho() {
       ) : null}
 
       {open?.kind === 'novo' ? <NewLotSheet onClose={close} /> : null}
+      {open?.kind === 'importar' ? <ImportHerdSheet onClose={close} /> : null}
       {open?.kind === 'mover' && current ? <MoveSheet lotId={current.lot.id} onClose={close} /> : null}
       {open?.kind === 'pesar' && current ? <WeighSheet lot={current} onClose={close} /> : null}
       {open?.kind === 'alterar' && current ? <ChangeSheet lot={current} onClose={close} /> : null}

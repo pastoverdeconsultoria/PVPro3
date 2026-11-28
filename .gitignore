@@ -7,3 +7,4 @@ dev-dist
 .vercel
 *.local
 reference/simulador/node_modules
+*.tsbuildinfo

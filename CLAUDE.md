@@ -268,6 +268,13 @@ Bug real: o app não abria sem sinal. O Supabase dá validade de 1 h ao login; v
 - **Sessão renovou ou o sinal voltou → `resync`**: envia a fila e relê a fazenda se a tela está na cópia. Dispara no evento de sessão renovada, no `online`, ao voltar para a frente e a cada 2 min.
 - Testes: `src/data/sessao.test.ts` e `src/state/abrirSemSinal.test.ts`. Conferido no navegador sem rede com token vencido: antes 28 s e tela Entrar; agora o Painel da fazenda em ~2,6 s.
 
+### Projeção no celular e keep-alive (28 nov 2026)
+
+Autorizado pelo Lucas com "Atualizar código ok".
+
+- **Projeção a 360 px**: nada estourava, mas o gráfico era desenhado em 480 de largura e encolhido, e os meses saíam com ~6 px. Agora o `Chart` mede a largura real (`ResizeObserver`) e desenha nela, com fonte de 12 px e rótulo a cada 2 meses (a cada 3 no celular). Mês a mês em duas linhas (chuva · temperatura / PPR · FH) e Pior mês com a unidade. Conferido em 360 e 1280 px.
+- **Keep-alive** (`.github/workflows/supabase-keepalive.yml`), cópia adaptada do PV Pro: todo dia às 06:47 da Bahia chama `notebook_context` com link inexistente, lendo endereço e chave do site no ar. Banco pausado faz o job falhar e o GitHub manda e-mail (é o alarme). Resposta 404 = banco acordado sem a migração do caderno: passa com aviso. Desnecessário no plano Pro. O GitHub desliga o agendamento após 60 dias sem commit.
+
 ### Revisão de segurança (17 nov 2026)
 
 Feita pelo Claude a pedido do Lucas, lendo o SQL e o código. Corrigido no código:

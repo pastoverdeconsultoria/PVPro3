@@ -1,0 +1,92 @@
+# Mantém o banco acordado.
+#
+# O plano gratuito do Supabase PAUSA o projeto quando ele passa uns dias
+# sem movimento. Pausado, o endereço do banco some da internet: o app só
+# abre pela cópia do celular, o link do vaqueiro não funciona e nada do que
+# for feito sem sinal sobe. Aconteceu duas vezes com o PV Pro em out/2026.
+#
+# Uma consulta por dia basta para o projeto nunca ficar parado. Ela chama a
+# mesma função pública do link do vaqueiro (notebook_context), com um link
+# que não existe: o banco de pé responde "null".
+#
+# Se o banco JÁ estiver pausado, esta chamada não o acorda: falha. A falha
+# é de propósito, porque o GitHub manda e-mail ao dono do repositório
+# quando um job agendado falha. Vira o alarme de "banco fora do ar".
+# Para destravar: supabase.com → pvpro3 → Resume project.
+#
+# Endereço e chave publicável são lidos do PRÓPRIO SITE no ar, não de um
+# segredo: a chave publicável já é pública (vai dentro do app) e assim a
+# chamada acompanha sozinha uma troca de chave futura.
+#
+# Atenção: o GitHub desliga agendamentos de repositório sem nenhum commit
+# por 60 dias. Se o repositório ficar parado tanto tempo, reative em
+# Actions → Supabase acordado → Enable workflow.
+# Com o plano Pro do Supabase este arquivo deixa de ser necessário.
+
+name: Supabase acordado
+
+on:
+  schedule:
+    # todo dia às 09:47 UTC (06:47 na Bahia), fora do horário do PV Pro
+    - cron: '47 9 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Descobrir endereço e chave pelo site no ar
+        id: cfg
+        run: |
+          set -euo pipefail
+          SITE=https://pv-pro3.vercel.app
+          JS=$(curl -fsS --max-time 30 "$SITE/" | grep -o 'assets/index-[A-Za-z0-9_-]*\.js' | head -1)
+          if [ -z "$JS" ]; then echo "::error::não achei o app em $SITE"; exit 1; fi
+          curl -fsS --max-time 60 "$SITE/$JS" -o bundle.js
+          URL=$(grep -o 'https://[a-z0-9]*\.supabase\.co' bundle.js | head -1 || true)
+          KEY=$(grep -o 'sb_publishable_[A-Za-z0-9_-]*' bundle.js | head -1 || true)
+          if [ -z "$KEY" ]; then
+            KEY=$(grep -oE 'eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}' bundle.js | head -1 || true)
+          fi
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "::error::não achei endereço ou chave do Supabase dentro do app publicado"
+            exit 1
+          fi
+          echo "::add-mask::$KEY"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+          echo "Banco: $URL"
+
+      - name: Consultar o banco
+        env:
+          SB_URL: ${{ steps.cfg.outputs.url }}
+          SB_KEY: ${{ steps.cfg.outputs.key }}
+        run: |
+          set -uo pipefail
+          # link que não existe (32+ caracteres): o banco de pé responde null
+          STATUS=$(curl -s -o resposta.txt -w '%{http_code}' --max-time 30 \
+            -X POST "$SB_URL/rest/v1/rpc/notebook_context" \
+            -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"p_token":"keepalive-0000000000000000000000000000"}' || echo 000)
+          echo "HTTP $STATUS"
+          if [ "$STATUS" = "200" ]; then
+            echo "Banco acordado."
+            exit 0
+          fi
+          if [ "$STATUS" = "404" ]; then
+            # O banco respondeu (está acordado), mas a função do caderno não existe.
+            echo "::warning::Banco acordado, mas falta rodar a migração do caderno (supabase/migrations/20261116120000_caderno.sql). Sem ela o link do vaqueiro não funciona."
+            exit 0
+          fi
+          if [ "$STATUS" = "000" ]; then
+            echo "::error::O banco não respondeu. Provavelmente o projeto foi PAUSADO pelo Supabase. Entre em supabase.com, abra o pvpro3 e toque em Resume project."
+          else
+            echo "::error::O banco respondeu HTTP $STATUS."
+            head -c 300 resposta.txt || true
+          fi
+          exit 1

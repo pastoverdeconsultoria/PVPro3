@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Actions, ErrorText, Field, Sheet, useAction } from '../components/ui';
 import { capacityOf, nitrogenPlan, PROJECTION, projectScope, type ProjScope } from '../lib/calc/projection';
 import { HISTORY_YEARS } from '../lib/climate/openMeteo';
@@ -122,9 +122,8 @@ export function Projecao() {
         </section>
         <section aria-label="Pior mês" className="card flex flex-[1_1_130px] flex-col gap-1">
           <span className="k">Pior mês</span>
-          <span className="big mt-auto pt-3 text-[28px]">
-            {shortMonth(sc.months.get(worst)!, year)} <span className="text-[18px]">{nf(worstCap, 2)}</span>
-          </span>
+          <span className="big mt-auto pt-3 text-[28px]">{shortMonth(sc.months.get(worst)!, year)}</span>
+          <span className="font-display text-[16px] font-semibold">{nf(worstCap, 2)} UA/ha</span>
           <span className="k text-xs">{excessUa > 0.5 ? `${nf(excessUa, 0)} UA a mais que o pasto sustenta` : 'a lotação de hoje cabe'}</span>
         </section>
       </div>
@@ -157,8 +156,12 @@ export function Projecao() {
               <li key={k} className="flex items-center justify-between gap-3 border-t border-line py-2 first:border-t-0">
                 <span className="flex min-w-0 flex-col">
                   <span className="font-display text-[16px] font-semibold">{shortMonth(m, year)}</span>
+                  {/* Duas linhas de propósito: numa só, a 360 px, o "PPR" ficava sozinho no fim. */}
                   <span className="k text-xs">
-                    {nf(m.rain, 0)} mm · {Number.isNaN(m.T) ? '—' : `${nf(m.T, 1)}°`} · PPR {nf(sc.ppr.get(k) ?? 0, 2)} · FH {nf(m.FH, 2)}
+                    {nf(m.rain, 0)} mm · {Number.isNaN(m.T) ? '—' : `${nf(m.T, 1)}°`}
+                  </span>
+                  <span className="k text-xs">
+                    PPR {nf(sc.ppr.get(k) ?? 0, 2)} · FH {nf(m.FH, 2)}
                   </span>
                 </span>
                 <span className="flex shrink-0 flex-col items-end">
@@ -279,10 +282,23 @@ export function Projecao() {
 
 /** Barras da lotação ocorrida (12 meses) e linha da capacidade (24 meses), com a faixa seco a chuvoso à frente. */
 function Chart({ sc, year }: { sc: ProjScope; year: number }) {
+  // O desenho usa a largura real em pixels: com largura fixa de 480 encolhida
+  // para o celular, os meses saíam com ~6 px de altura, ilegíveis.
+  const box = useRef<HTMLDivElement>(null);
+  const [W, setW] = useState(480);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const measure = () => setW(Math.max(240, Math.round(el.clientWidth)));
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const ks = Array.from({ length: 24 }, (_, i) => i - 11);
-  const W = 480;
-  const H = 170;
-  const top = 8;
+  const H = 180;
+  const top = 10;
   const bottom = 22;
   const slot = W / ks.length;
   const all = [sc.current, ...ks.flatMap((k) => [sc.observed.get(k) ?? 0, sc.capacity[2].get(k) ?? 0, sc.capacity[1].get(k) ?? 0])];
@@ -292,10 +308,13 @@ function Chart({ sc, year }: { sc: ProjScope; year: number }) {
   const line = ks.map((k) => `${x(k).toFixed(1)},${y(sc.capacity[1].get(k) ?? 0).toFixed(1)}`).join(' ');
   const ahead = ks.filter((k) => k >= 0);
   const band = [...ahead.map((k) => `${x(k).toFixed(1)},${y(sc.capacity[2].get(k) ?? 0).toFixed(1)}`), ...[...ahead].reverse().map((k) => `${x(k).toFixed(1)},${y(sc.capacity[0].get(k) ?? 0).toFixed(1)}`)].join(' ');
+  // Um rótulo a cada 2 meses quando cabe; no celular, a cada 3 (sempre marcando o mês atual).
+  const every = slot * 2 >= 34 ? 2 : 3;
   const summary = `Lotação de pasto ocorrida e capacidade projetada de ${sc.name}. Hoje ${nf(sc.current, 2)} UA/ha; capacidade do mês ${nf(sc.capacity[1].get(0) ?? 0, 2)}.`;
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="block w-full" role="img" aria-label={summary}>
+    <div ref={box} className="w-full">
+    <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="block max-w-full" role="img" aria-label={summary}>
       {[0.25, 0.5, 0.75, 1].map((f) => (
         <line key={f} x1={0} x2={W} y1={y((max / 1.08) * f)} y2={y((max / 1.08) * f)} stroke="#223028" strokeWidth={1} />
       ))}
@@ -308,16 +327,17 @@ function Chart({ sc, year }: { sc: ProjScope; year: number }) {
       {sc.current > 0 ? <line x1={x(0)} x2={W} y1={y(sc.current)} y2={y(sc.current)} stroke="#FF8A3D" strokeWidth={2} strokeDasharray="6 5" /> : null}
       <polyline points={line} fill="none" stroke="#6FA8FF" strokeWidth={2.5} strokeLinejoin="round" />
       {ks.map((k) =>
-        (k + 11) % 2 === 1 ? (
-          <text key={k} x={x(k)} y={H - 6} textAnchor="middle" fontSize={11} fill={k === 0 ? '#EEF3EC' : '#9DB0A3'} fontWeight={k === 0 ? 700 : 400}>
+        ((k % every) + every) % every === 0 ? (
+          <text key={k} x={Math.min(x(k), W - 2)} y={H - 6} textAnchor={x(k) + 14 > W ? 'end' : 'middle'} fontSize={12} fill={k === 0 ? '#EEF3EC' : '#9DB0A3'} fontWeight={k === 0 ? 700 : 400}>
             {shortMonth(sc.months.get(k)!, year).slice(0, 3)}
           </text>
         ) : null,
       )}
-      <text x={4} y={top + 10} fontSize={11} fill="#9DB0A3">
+      <text x={4} y={top + 10} fontSize={12} fill="#9DB0A3">
         {nf(max / 1.08, 1)} UA/ha
       </text>
     </svg>
+    </div>
   );
 }
 
